@@ -19,7 +19,9 @@ Read beautifully formatted Markdown documents right on your calculator's 320×24
 
 ## Screenshots
 
-*Coming soon — run it on your HP Prime or the HP Prime Virtual Calculator to see it in action.*
+![Screenshot 1](Screenshot_1.png)
+![Screenshot 2](Screenshot_2.png)
+![Screenshot 3](Screenshot_3.png)
 
 ## Getting Started
 
