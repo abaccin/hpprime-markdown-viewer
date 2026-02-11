@@ -23,6 +23,7 @@ Read beautifully formatted Markdown documents right on your calculator's 320×24
 ![Screenshot 1](Screenshot_1.png)
 ![Screenshot 2](Screenshot_2.png)
 ![Screenshot 3](Screenshot_3.png)
+![Screenshot 3](Screenshot_4.png)
 
 ## Getting Started
 
