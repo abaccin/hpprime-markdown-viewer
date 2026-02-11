@@ -1,6 +1,8 @@
 from graphics import draw_text, draw_rectangle, text_width, draw_image
 from constants import (FONT_10, FONT_12, FONT_14,
-    COLOR_NORMAL, COLOR_HEADER, COLOR_CODE, COLOR_BOLD, COLOR_ITALIC, COLOR_BG)
+    COLOR_NORMAL, COLOR_HEADER, COLOR_CODE, COLOR_BOLD, COLOR_ITALIC, COLOR_BG,
+    COLOR_TABLE_BORDER, COLOR_TABLE_HEADER_BG, COLOR_TABLE_ALT_BG,
+    COLOR_WARNING, TABLE_MAX_COLS, TABLE_CELL_PAD)
 
 
 class MarkdownViewer:
@@ -39,6 +41,7 @@ class MarkdownRenderer:
         self.current_y = y
         self.line_height = 12
         self.scroll_offset = 0
+        self._table_buffer = []
 
     def _in_view(self, y, h=12):
         """Check if a line at y with height h is fully within the visible area."""
@@ -55,6 +58,7 @@ class MarkdownRenderer:
         """Render markdown text to the graphics buffer."""
         self.clear()
         self.current_y = self.y - self.scroll_offset
+        self._table_buffer = []
         lines = markdown_text.split('\n')
 
         for line in lines:
@@ -62,15 +66,29 @@ class MarkdownRenderer:
                 break
             self._render_line(line)
 
+        # Flush any remaining table at end of document
+        if self._table_buffer:
+            self._flush_table()
+
     def _render_line(self, line):
         """Render a single line of markdown."""
         line = line.rstrip()
+
+        # Check if we're collecting table rows
+        if self._table_buffer:
+            if line.startswith('|'):
+                self._buffer_table_line(line)
+                return
+            else:
+                self._flush_table()
 
         if not line:
             self.current_y += self.line_height // 2
             return
 
-        if line.startswith('!['):
+        if line.startswith('|'):
+            self._buffer_table_line(line)
+        elif line.startswith('!['):
             self._render_image(line)
         elif line.startswith('#'):
             self._render_header(line)
@@ -140,6 +158,114 @@ class MarkdownRenderer:
                       bullet, FONT_10, COLOR_NORMAL,
                       self.x + self.width - bullet_x)
         self._render_wrapped(text, text_x)
+
+    def _is_table_separator(self, cells):
+        """Check if cells form a separator row like |---|---|."""
+        for c in cells:
+            stripped = c.replace('-', '').replace(':', '').replace(' ', '')
+            if stripped != '':
+                return False
+        return True
+
+    def _buffer_table_line(self, line):
+        """Buffer a table row for later rendering."""
+        # Split on | and strip outer empty elements
+        parts = line.split('|')
+        if parts and parts[0].strip() == '':
+            parts = parts[1:]
+        if parts and parts[-1].strip() == '':
+            parts = parts[:-1]
+        cells = [c.strip() for c in parts]
+        # Skip separator rows (|---|---|)
+        if self._is_table_separator(cells):
+            return
+        self._table_buffer.append(cells)
+
+    def _flush_table(self):
+        """Render a buffered table."""
+        rows = self._table_buffer
+        self._table_buffer = []
+        if not rows:
+            return
+
+        num_cols = max(len(r) for r in rows)
+
+        # Warn if table has too many columns
+        if num_cols > TABLE_MAX_COLS:
+            self._render_table_warning(num_cols)
+            return
+
+        # Calculate column widths based on content
+        col_widths = [0] * num_cols
+        for row in rows:
+            for i in range(len(row)):
+                if i < num_cols:
+                    w = text_width(row[i], FONT_10)
+                    if w > col_widths[i]:
+                        col_widths[i] = w
+
+        pad = TABLE_CELL_PAD
+        total_w = sum(w + pad * 2 for w in col_widths) + num_cols + 1
+
+        # Check if table fits; if not, distribute evenly
+        if total_w > self.width:
+            avail = self.width - (num_cols + 1)
+            per_col = avail // num_cols - pad * 2
+            if per_col < 10:
+                # Table truly cannot fit
+                self._render_table_warning(num_cols)
+                return
+            col_widths = [per_col] * num_cols
+            total_w = self.width
+
+        # Render rows
+        row_h = self.line_height + 2
+        for ri in range(len(rows)):
+            row = rows[ri]
+            is_header = (ri == 0)
+
+            # Determine background color
+            if is_header:
+                bg = COLOR_TABLE_HEADER_BG
+            elif ri % 2 == 0:
+                bg = COLOR_TABLE_ALT_BG
+            else:
+                bg = COLOR_BG
+
+            if self._in_view(self.current_y, row_h):
+                cx = self.x
+                for ci in range(num_cols):
+                    cell_w = col_widths[ci] + pad * 2
+                    cell_text = row[ci] if ci < len(row) else ''
+
+                    # Draw cell background
+                    draw_rectangle(self.gr, cx, self.current_y,
+                                   cx + cell_w, self.current_y + row_h,
+                                   COLOR_TABLE_BORDER, 255, bg, 255)
+
+                    # Draw cell text (clipped to cell width)
+                    draw_text(self.gr, cx + pad, self.current_y + 1,
+                              cell_text, FONT_10,
+                              COLOR_BOLD if is_header else COLOR_NORMAL,
+                              col_widths[ci])
+                    # Fake bold for header by drawing offset by 1px
+                    if is_header:
+                        draw_text(self.gr, cx + pad + 1, self.current_y + 1,
+                                  cell_text, FONT_10, COLOR_BOLD,
+                                  col_widths[ci])
+                    cx += cell_w
+
+            self.current_y += row_h
+
+        self.current_y += 4
+
+    def _render_table_warning(self, num_cols):
+        """Show a warning when a table is too wide to render."""
+        msg = '[Table too wide (' + str(num_cols) + ' cols)]'
+        if self._in_view(self.current_y):
+            draw_text(self.gr, self.x, self.current_y,
+                      msg, FONT_10, COLOR_WARNING, self.width)
+        self.current_y += self.line_height
 
     def _render_paragraph(self, line):
         """Render a paragraph with inline formatting."""

@@ -18,6 +18,15 @@ No PC required.
 1. Numbered lists too
 2. Fully supported
 
+### Tables
+
+| Key | Action |
+|---|---|
+| Up | Scroll up |
+| Down | Scroll down |
+| Enter | Open file |
+| ON | Exit |
+
 ### Smooth Scrolling
 - Press **Up** to scroll up
 - Press **Down** to scroll down
