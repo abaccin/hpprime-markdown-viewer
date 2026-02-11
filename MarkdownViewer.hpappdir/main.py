@@ -1,7 +1,8 @@
 from constants import (GR_AFF, FONT_10, FONT_12, FONT_14,
-    COLOR_BLACK, COLOR_WHITE, COLOR_HEADER, COLOR_RED, COLOR_GRAY)
+    COLOR_BLACK, COLOR_WHITE, COLOR_HEADER, COLOR_RED, COLOR_GRAY,
+    DRAG_THRESHOLD)
 from hpprime import eval, fillrect, keyboard
-from graphics import draw_text, draw_rectangle, text_width
+from graphics import draw_text, draw_rectangle, text_width, get_mouse
 from keycodes import KEY_UP, KEY_DOWN, KEY_ENTER, KEY_ON
 from file_ops import list_files
 from markdown_viewer import MarkdownViewer
@@ -12,6 +13,42 @@ def get_key():
     if keyboard():
         return eval('GETKEY()')
     return 0
+
+
+def get_touch_y():
+    """Get the Y coordinate of the current touch, or -1 if not touching."""
+    try:
+        m = get_mouse()
+        if not m or type(m) is not list:
+            return -1
+        first = m[0]
+        if type(first) is list:
+            if len(first) >= 2 and first[0] >= 0:
+                return int(first[1])
+        elif type(first) in (int, float):
+            if len(m) >= 2 and m[0] >= 0:
+                return int(m[1])
+    except:
+        pass
+    return -1
+
+
+def get_touch():
+    """Get (x, y) of the current touch, or (-1, -1) if not touching."""
+    try:
+        m = get_mouse()
+        if not m or type(m) is not list:
+            return (-1, -1)
+        first = m[0]
+        if type(first) is list:
+            if len(first) >= 2 and first[0] >= 0:
+                return (int(first[0]), int(first[1]))
+        elif type(first) in (int, float):
+            if len(m) >= 2 and m[0] >= 0:
+                return (int(m[0]), int(m[1]))
+    except:
+        pass
+    return (-1, -1)
 
 
 def get_md_files():
@@ -49,13 +86,17 @@ def draw_file_browser(md_files, selected):
     if len(md_files) == 0:
         draw_text(GR_AFF, 15, 30, "No .md files found", FONT_10, COLOR_RED)
 
-    draw_text(GR_AFF, 10, 225, "Up/Down:Select  Enter:Open  ON:Exit", FONT_10, COLOR_GRAY)
+    draw_text(GR_AFF, 10, 225, "Up/Down:Select  Enter/Tap:Open  ON:Exit", FONT_10, COLOR_GRAY)
 
 
 def file_browser():
     """Show file browser and return selected filename."""
     md_files = get_md_files()
     selected = 0
+    max_visible = 9
+    touch_down = False
+    tap_x = -1
+    tap_y = -1
 
     draw_file_browser(md_files, selected)
 
@@ -74,6 +115,29 @@ def file_browser():
                 elif key == KEY_ENTER:
                     if len(md_files) > 0:
                         return md_files[selected]
+
+            # Handle touch: tap to select, tap selected to open
+            tx, ty = get_touch()
+            if tx >= 0 and ty >= 0:
+                touch_down = True
+                tap_x = tx
+                tap_y = ty
+            elif touch_down:
+                # Finger just released — process tap
+                touch_down = False
+                if len(md_files) > 0 and tap_y >= 50 and tap_y < 230:
+                    start = 0
+                    if selected >= max_visible:
+                        start = selected - max_visible + 1
+                    row = (tap_y - 50) // 20
+                    tapped = start + row
+                    if tapped < len(md_files):
+                        if tapped == selected:
+                            return md_files[selected]
+                        else:
+                            selected = tapped
+                            draw_file_browser(md_files, selected)
+
     except KeyboardInterrupt:
         return None
 
@@ -95,6 +159,8 @@ def main():
     viewer.load_markdown_file(filename)
     viewer.render()
 
+    drag_last_y = -1
+
     try:
         while True:
             key = get_key()
@@ -105,6 +171,20 @@ def main():
                 elif key == KEY_DOWN:
                     viewer.scroll_down()
                     viewer.render()
+
+            # Handle touch drag scrolling
+            touch_y = get_touch_y()
+            if touch_y >= 0:
+                if drag_last_y >= 0:
+                    delta = drag_last_y - touch_y
+                    if abs(delta) >= DRAG_THRESHOLD:
+                        viewer.scroll_by(delta)
+                        viewer.render()
+                        drag_last_y = touch_y
+                else:
+                    drag_last_y = touch_y
+            else:
+                drag_last_y = -1
     except KeyboardInterrupt:
         pass
 

@@ -28,6 +28,10 @@ class MarkdownViewer:
         """Scroll the document down."""
         self.document.scroll_down()
 
+    def scroll_by(self, delta):
+        """Scroll the document by delta pixels."""
+        self.document.scroll_by(delta)
+
 
 class MarkdownRenderer:
     """Lightweight markdown renderer for HP Prime display (320x240)."""
@@ -434,6 +438,12 @@ class MarkdownRenderer:
         """Scroll content down."""
         self.scroll_offset += amount
 
+    def scroll_by(self, delta):
+        """Scroll by an arbitrary pixel amount (positive = down)."""
+        self.scroll_offset += delta
+        if self.scroll_offset < 0:
+            self.scroll_offset = 0
+
 
 class MarkdownDocument:
     """Loads and manages markdown document content."""
@@ -468,4 +478,10 @@ class MarkdownDocument:
         """Scroll the document down and re-render."""
         if self.renderer:
             self.renderer.scroll_down()
+            self.renderer.render(self.content)
+
+    def scroll_by(self, delta):
+        """Scroll by delta pixels and re-render."""
+        if self.renderer:
+            self.renderer.scroll_by(delta)
             self.renderer.render(self.content) 

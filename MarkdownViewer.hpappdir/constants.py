@@ -43,3 +43,6 @@ COLOR_WARNING = const(0xCC6600)
 # Table limits
 TABLE_MAX_COLS = const(5)
 TABLE_CELL_PAD = const(3)
+
+# Touch/drag scrolling
+DRAG_THRESHOLD = const(3)
