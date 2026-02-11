@@ -13,7 +13,7 @@ Read beautifully formatted Markdown documents right on your calculator's 320×24
 - **Bullet lists** and **numbered lists**
 - **Horizontal rules** (`---`, `***`, `___`)
 - **Tables** with header styling and alternating row colors (warns if too wide)
-- **Embedded images** via base64-encoded raw pixel data
+- **Embedded images** via base64-encoded raw pixel data or **image files** (PNG, etc.)
 - **Word wrapping** that fits the 320px-wide screen
 - **Smooth scrolling** with Up/Down keys or **touch drag**
 - **Built-in file browser** to pick `.md` files from calculator storage
@@ -71,9 +71,9 @@ Place any `.md` files in the app's storage folder on the calculator. The built-i
 | Ordered list | `1. item` |
 | Horizontal rule | `---`, `***`, or `___` |
 | Tables | `\| col1 \| col2 \|` (up to 5 columns) |
-| Images | `![alt](data:image/raw;base64,...)` |
+| Images | `![alt](image.png)` or `![alt](data:image/raw;base64,...)` |
 
-> **Note:** Images use a custom raw format — the first 4 bytes encode width and height (2 bytes each, big-endian), followed by RGB pixel triplets, all base64-encoded.
+> **Note:** Images can be loaded directly from files (PNG, etc.) placed in the app folder using `![alt](filename.png)`. Alternatively, images can use a custom raw format — the first 4 bytes encode width and height (2 bytes each, big-endian), followed by RGB pixel triplets, all base64-encoded. File-based images that exceed the display width are automatically scaled down.
 
 ## Project Structure
 
@@ -106,7 +106,7 @@ MarkdownViewer.hpappdir/
 - Tables wider than 5 columns display a warning instead of rendering
 - No link rendering (URLs are displayed as plain text)
 - Code fences (` ``` `) are recognized but the enclosed block is rendered as plain text
-- Images must be in the custom base64-encoded raw RGB format described above
+- Images must be in the custom base64-encoded raw RGB format described above, or loaded from image files in the app folder
 
 ## Contributing
 
@@ -116,7 +116,6 @@ Some ideas for future improvements:
 
 - Blockquote support
 - Link highlighting
-- Larger image support with scrolling
 - Theme / color customization
 
 ## License

@@ -42,6 +42,10 @@ Images can be embedded using base64-encoded raw pixel data:
 
 ![heart](data:image/raw;base64,AAwAC////////9wUPNwUPP///////////9wUPNwUPP///////////////9wUPNwUPNwUPNwUPP///9wUPNwUPNwUPNwUPP///////9wUPNwUPNwUPNwUPNwUPNwUPNwUPNwUPNwUPNwUPNwUPP///9wUPNwUPNwUPNwUPNwUPNwUPNwUPNwUPNwUPNwUPNwUPP///9wUPNwUPNwUPNwUPNwUPNwUPNwUPNwUPNwUPNwUPNwUPP///////9wUPNwUPNwUPNwUPNwUPNwUPNwUPNwUPNwUPP///////////////9wUPNwUPNwUPNwUPNwUPNwUPNwUPP///////////////////////9wUPNwUPNwUPNwUPNwUPP///////////////////////////////9wUPNwUPNwUPP///////////////////////////////////////9wUPP///////////////////////////////////////////////////////////////////////w==)
 
+Or loaded directly from a file:
+
+![icon](icon.png)
+
 Write your notes, docs, and guides in standard Markdown on your PC, drop them onto your calculator, and read them anywhere.
 
 No more squinting at plain text files!

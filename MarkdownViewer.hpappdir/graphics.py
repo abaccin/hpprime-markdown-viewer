@@ -60,3 +60,56 @@ def draw_image(gr, x, y, pixel_data, img_width, img_height):
                 if color != 0xFFFFFF:  # skip white for transparency
                     fillrect(gr, x + col, y + row, 1, 1, color, color)
                 idx += 3
+
+
+def open_file(gr, name, app_name=""):
+    """Load an image file into a graphics buffer using AFiles.
+
+    gr: target graphics buffer number
+    name: filename (e.g. 'icon.png')
+    app_name: app name for cross-app file access (optional)
+    """
+    if app_name == "":
+        eval('G' + str(gr) + ':=AFiles("' + str(name) + '")')
+    else:
+        cmd = ('G' + str(gr) + ':=EXPR(REPLACE("' + str(app_name)
+               + '"," ","_")+".AFiles(""' + str(name) + '"")")')
+        eval(cmd)
+
+
+def blit(gr, dx1, dy1, dx2, dy2, src_gr, sx1, sy1, sx2, sy2,
+         transp_color=0xA8A8A7, transp_alpha=255):
+    """Blit (copy) a region from one graphics buffer to another.
+
+    gr: destination buffer
+    dx1,dy1,dx2,dy2: destination rectangle
+    src_gr: source buffer
+    sx1,sy1,sx2,sy2: source rectangle
+    transp_color: color to treat as transparent
+    transp_alpha: transparency alpha (255 = fully opaque / no transparency effect)
+    """
+    if transp_alpha != 255:
+        cmd = "BLIT_P(G{0},{1},{2},{3},{4},G{5},{6},{7},{8},{9},{10},{11})".format(
+            gr, dx1, dy1, dx2, dy2, src_gr, sx1, sy1, sx2, sy2,
+            transp_color, transp_alpha)
+    else:
+        cmd = "BLIT_P(G{0},{1},{2},{3},{4},G{5},{6},{7},{8},{9})".format(
+            gr, dx1, dy1, dx2, dy2, src_gr, sx1, sy1, sx2, sy2)
+    eval(cmd)
+
+
+def get_grob_size(gr):
+    """Get the width and height of a graphics buffer.
+
+    Returns (width, height) or None on failure.
+    """
+    try:
+        result = eval('GROBW_P(G' + str(gr) + ')')
+        w = int(result) if result else 0
+        result = eval('GROBH_P(G' + str(gr) + ')')
+        h = int(result) if result else 0
+        if w > 0 and h > 0:
+            return (w, h)
+    except:
+        pass
+    return None
