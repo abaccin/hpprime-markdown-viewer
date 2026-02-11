@@ -15,7 +15,7 @@ Read beautifully formatted Markdown documents right on your calculator's 320×24
 - **Tables** with header styling and alternating row colors (warns if too wide)
 - **Embedded images** via base64-encoded raw pixel data
 - **Word wrapping** that fits the 320px-wide screen
-- **Smooth scrolling** with Up/Down keys
+- **Smooth scrolling** with Up/Down keys or **touch drag**
 - **Built-in file browser** to pick `.md` files from calculator storage
 
 ## Screenshots
@@ -46,7 +46,7 @@ Place any `.md` files in the app's storage folder on the calculator. The built-i
 
 1. Launch **MarkdownViewer** from the app menu.
 2. Use **Up / Down** to highlight a `.md` file, then press **Enter** to open it.
-3. Scroll through the rendered document with **Up / Down**.
+3. Scroll through the rendered document with **Up / Down** or by **dragging** on the touchscreen.
 4. Press **ON** (or trigger a `KeyboardInterrupt`) to return to the file browser or exit.
 
 ## Controls
@@ -55,6 +55,7 @@ Place any `.md` files in the app's storage folder on the calculator. The built-i
 |---|---|
 | **Up** | Scroll up / previous file |
 | **Down** | Scroll down / next file |
+| **Touch drag** | Drag to scroll document |
 | **Enter** | Open selected file |
 | **ON** | Exit viewer / app |
 
