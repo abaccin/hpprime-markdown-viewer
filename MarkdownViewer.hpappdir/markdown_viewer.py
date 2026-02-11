@@ -1,8 +1,9 @@
-from graphics import draw_text, draw_rectangle, text_width, draw_image
+from graphics import (draw_text, draw_rectangle, text_width, draw_image,
+    open_file, blit, get_grob_size)
 from constants import (FONT_10, FONT_12, FONT_14,
     COLOR_NORMAL, COLOR_HEADER, COLOR_CODE, COLOR_BOLD, COLOR_ITALIC, COLOR_BG,
     COLOR_TABLE_BORDER, COLOR_TABLE_HEADER_BG, COLOR_TABLE_ALT_BG,
-    COLOR_WARNING, TABLE_MAX_COLS, TABLE_CELL_PAD)
+    COLOR_WARNING, TABLE_MAX_COLS, TABLE_CELL_PAD, GR_TMP, TRANSPARENCY)
 
 
 class MarkdownViewer:
@@ -373,7 +374,12 @@ class MarkdownRenderer:
         return segments if segments else [('normal', text)]
 
     def _render_image(self, line):
-        """Render an image from ![alt](data:image/...;base64,...)."""
+        """Render an image from ![alt](source).
+
+        Supports two formats:
+        - File: ![alt](filename.png)
+        - Base64: ![alt](data:image/raw;base64,...)
+        """
         bracket_end = line.find(']')
         if bracket_end == -1:
             self._render_paragraph(line)
@@ -385,10 +391,40 @@ class MarkdownRenderer:
             return
 
         url = line[paren_start + 1:paren_end]
-        if 'base64,' not in url:
-            self._render_paragraph(line)
-            return
 
+        if 'base64,' in url:
+            self._render_base64_image(url)
+        else:
+            self._render_file_image(url)
+
+    def _render_file_image(self, filename):
+        """Render an image loaded from a file via AFiles."""
+        try:
+            open_file(GR_TMP, filename)
+            size = get_grob_size(GR_TMP)
+            if not size:
+                return
+            img_w, img_h = size
+
+            # Clamp to available width
+            display_w = img_w
+            display_h = img_h
+            if display_w > self.width:
+                display_h = int(img_h * self.width / img_w)
+                display_w = self.width
+
+            img_x = self.x + (self.width - display_w) // 2
+            if self._in_view(self.current_y, display_h):
+                blit(self.gr, img_x, self.current_y,
+                     img_x + display_w, self.current_y + display_h,
+                     GR_TMP, 0, 0, img_w, img_h,
+                     TRANSPARENCY)
+            self.current_y += display_h + 4
+        except:
+            pass
+
+    def _render_base64_image(self, url):
+        """Render an image from base64-encoded raw pixel data."""
         b64_data = url[url.index('base64,') + 7:]
         raw = self._base64_decode(b64_data)
         if len(raw) < 5:

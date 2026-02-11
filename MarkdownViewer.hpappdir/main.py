@@ -28,7 +28,7 @@ def get_touch_y():
         elif type(first) in (int, float):
             if len(m) >= 2 and m[0] >= 0:
                 return int(m[1])
-    except:
+    except Exception:
         pass
     return -1
 
@@ -46,7 +46,7 @@ def get_touch():
         elif type(first) in (int, float):
             if len(m) >= 2 and m[0] >= 0:
                 return (int(m[0]), int(m[1]))
-    except:
+    except Exception:
         pass
     return (-1, -1)
 
