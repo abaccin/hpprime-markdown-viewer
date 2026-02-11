@@ -12,6 +12,7 @@ Read beautifully formatted Markdown documents right on your calculator's 320×24
 - **Bold**, *italic*, and `inline code` formatting
 - **Bullet lists** and **numbered lists**
 - **Horizontal rules** (`---`, `***`, `___`)
+- **Tables** with header styling and alternating row colors (warns if too wide)
 - **Embedded images** via base64-encoded raw pixel data
 - **Word wrapping** that fits the 320px-wide screen
 - **Smooth scrolling** with Up/Down keys
@@ -67,6 +68,7 @@ Place any `.md` files in the app's storage folder on the calculator. The built-i
 | Bullet list | `- item` or `* item` |
 | Ordered list | `1. item` |
 | Horizontal rule | `---`, `***`, or `___` |
+| Tables | `\| col1 \| col2 \|` (up to 5 columns) |
 | Images | `![alt](data:image/raw;base64,...)` |
 
 > **Note:** Images use a custom raw format — the first 4 bytes encode width and height (2 bytes each, big-endian), followed by RGB pixel triplets, all base64-encoded.
@@ -99,7 +101,7 @@ MarkdownViewer.hpappdir/
 ## Limitations
 
 - No nested lists or blockquotes
-- No tables
+- Tables wider than 5 columns display a warning instead of rendering
 - No link rendering (URLs are displayed as plain text)
 - Code fences (` ``` `) are recognized but the enclosed block is rendered as plain text
 - Images must be in the custom base64-encoded raw RGB format described above
@@ -110,7 +112,6 @@ Contributions are welcome! Feel free to open issues or submit pull requests.
 
 Some ideas for future improvements:
 
-- Table rendering
 - Blockquote support
 - Link highlighting
 - Larger image support with scrolling
