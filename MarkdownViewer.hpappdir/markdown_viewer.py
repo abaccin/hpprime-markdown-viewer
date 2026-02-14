@@ -1,17 +1,18 @@
 from graphics import (draw_text, draw_rectangle, text_width, draw_image,
     open_file, blit, get_grob_size)
 from constants import (FONT_10, FONT_12, FONT_14,
-    COLOR_NORMAL, COLOR_HEADER, COLOR_CODE, COLOR_BOLD, COLOR_ITALIC, COLOR_BG,
-    COLOR_TABLE_BORDER, COLOR_TABLE_HEADER_BG, COLOR_TABLE_ALT_BG,
-    COLOR_WARNING, TABLE_MAX_COLS, TABLE_CELL_PAD, GR_TMP, TRANSPARENCY,
-    COLOR_CODE_BG)
+    TABLE_MAX_COLS, TABLE_CELL_PAD, GR_TMP, TRANSPARENCY,
+    SCROLLBAR_WIDTH, SCROLLBAR_MIN_THUMB, BLOCKQUOTE_INDENT,
+    BLOCKQUOTE_BAR_WIDTH, NESTED_LIST_INDENT)
+import theme
 
 
 class MarkdownViewer:
     """A simple markdown viewer for HP Prime."""
 
-    def __init__(self, gr):
+    def __init__(self, gr, height=230):
         self.gr = gr
+        self.height = height
         self.document = MarkdownDocument()
 
     def load_markdown_file(self, filename):
@@ -20,35 +21,94 @@ class MarkdownViewer:
 
     def render(self):
         """Render the loaded markdown document."""
-        self.document.render(self.gr)
+        self.document.render(self.gr, height=self.height)
 
     def scroll_up(self):
-        """Scroll the document up."""
         self.document.scroll_up()
 
     def scroll_down(self):
-        """Scroll the document down."""
         self.document.scroll_down()
 
     def scroll_by(self, delta):
-        """Scroll the document by delta pixels."""
         self.document.scroll_by(delta)
 
     def scroll_page_up(self):
-        """Scroll up by one page."""
         self.document.scroll_page_up()
 
     def scroll_page_down(self):
-        """Scroll down by one page."""
         self.document.scroll_page_down()
 
     def scroll_to_top(self):
-        """Scroll to beginning of file."""
         self.document.scroll_to_top()
 
     def scroll_to_bottom(self):
-        """Scroll to end of file."""
         self.document.scroll_to_bottom()
+
+    def toggle_theme(self):
+        """Toggle light/dark theme and re-render."""
+        theme.toggle()
+        if self.document.renderer:
+            self.document.renderer._content_height = 0
+        self.document.render(self.gr)
+
+    def search(self, term):
+        """Search for term in the document."""
+        if not self.document.renderer:
+            return False
+        r = self.document.renderer
+        r._search_term = term.lower() if term else None
+        r._search_positions = []
+        r._search_match_idx = 0
+        if not term:
+            self.document.render(self.gr)
+            return False
+        # Full render pass to collect match positions
+        saved_height = r._content_height
+        r._content_height = 0
+        self.document.render(self.gr)
+        r._content_height = saved_height if saved_height > 0 else r._content_height
+        if r._search_positions:
+            target = r._search_positions[0] - r.y
+            r.scroll_offset = max(0, target)
+            m = r._max_scroll()
+            if r.scroll_offset > m:
+                r.scroll_offset = m
+            self.document.render(self.gr)
+            return True
+        return False
+
+    def search_next(self):
+        """Jump to next search match."""
+        if not self.document.renderer:
+            return
+        r = self.document.renderer
+        if not r._search_positions:
+            return
+        r._search_match_idx = (r._search_match_idx + 1) % len(r._search_positions)
+        target = r._search_positions[r._search_match_idx] - r.y
+        r.scroll_offset = max(0, target)
+        m = r._max_scroll()
+        if r.scroll_offset > m:
+            r.scroll_offset = m
+        self.document.render(self.gr)
+
+    def clear_search(self):
+        """Clear search highlighting."""
+        if self.document.renderer:
+            self.document.renderer._search_term = None
+            self.document.renderer._search_positions = []
+            self.document.render(self.gr)
+
+    def get_scroll_position(self):
+        """Get current scroll offset for bookmarking."""
+        if self.document.renderer:
+            return self.document.renderer.scroll_offset
+        return 0
+
+    def set_scroll_position(self, pos):
+        """Restore a saved scroll offset."""
+        if self.document.renderer:
+            self.document.renderer.scroll_offset = pos
 
 
 class MarkdownRenderer:
@@ -66,16 +126,20 @@ class MarkdownRenderer:
         self._table_buffer = []
         self._in_code_fence = False
         self._content_height = 0
+        self._blockquote_depth = 0
+        self._search_term = None
+        self._search_positions = []
+        self._search_match_idx = 0
 
     def _in_view(self, y, h=12):
-        """Check if a line at y with height h is fully within the visible area."""
+        """Check if a line at y with height h is within the visible area."""
         return y >= self.y and y + h <= self.y + self.height
 
     def clear(self):
         """Clear the rendering area."""
         draw_rectangle(self.gr, self.x, self.y,
                   self.x + self.width, self.y + self.height,
-                  COLOR_BG, 255, COLOR_BG, 255)
+                  theme.colors['bg'], 255, theme.colors['bg'], 255)
         self.current_y = self.y
 
     def render(self, markdown_text):
@@ -84,6 +148,9 @@ class MarkdownRenderer:
         self.current_y = self.y - self.scroll_offset
         self._table_buffer = []
         self._in_code_fence = False
+        self._blockquote_depth = 0
+        if self._search_term:
+            self._search_positions = []
         lines = markdown_text.split('\n')
 
         for line in lines:
@@ -91,20 +158,20 @@ class MarkdownRenderer:
                 break
             self._render_line(line)
 
-        # Flush any remaining table at end of document
         if self._table_buffer:
             self._flush_table()
 
-        # Calculate total content height on first render only
         if self._content_height == 0:
             self._content_height = self.current_y + self.scroll_offset - self.y
+
+        self._draw_scrollbar()
 
     def _render_line(self, line):
         """Render a single line of markdown."""
         line = line.rstrip()
 
         # Handle code fences
-        if line.startswith('```'):
+        if line.strip().startswith('```'):
             self._in_code_fence = not self._in_code_fence
             return
 
@@ -120,41 +187,63 @@ class MarkdownRenderer:
             else:
                 self._flush_table()
 
-        if not line:
+        stripped = line.strip()
+
+        if not stripped:
             self.current_y += self.line_height // 2
             return
 
         if line.startswith('|'):
             self._buffer_table_line(line)
-        elif line.startswith('!['):
-            self._render_image(line)
+        elif stripped.startswith('!['):
+            self._render_image(stripped)
         elif line.startswith('#'):
             self._render_header(line)
-        elif line == '---' or line == '***' or line == '___':
+        elif stripped == '---' or stripped == '***' or stripped == '___':
             self._render_hr()
-        elif line.startswith('- ') or line.startswith('* '):
-            self._render_list_item(line[2:])
-        elif self._is_ordered_list(line):
-            dot = line.index('.')
-            num = line[:dot]
-            text = line[dot + 1:].lstrip()
-            if text:
-                self._render_list_item(text, bullet=num + '.')
+        elif stripped.startswith('>'):
+            self._render_blockquote(stripped)
         else:
-            self._render_paragraph(line)
+            # Detect indentation for nested lists
+            indent = 0
+            temp = line
+            while temp.startswith(' '):
+                indent += 1
+                temp = temp[1:]
+            level = indent // 2
+            sl = temp
+
+            # Task list
+            if (sl.startswith('- [ ] ') or
+                    sl.startswith('- [x] ') or
+                    sl.startswith('- [X] ')):
+                checked = sl[3] in ('x', 'X')
+                self._render_task_list_item(sl[6:], checked, level)
+            # Unordered list
+            elif sl.startswith('- ') or sl.startswith('* '):
+                self._render_list_item(sl[2:], indent_level=level)
+            # Ordered list
+            elif self._is_ordered_list(sl):
+                dot = sl.index('.')
+                num = sl[:dot]
+                text = sl[dot + 1:].lstrip()
+                if text:
+                    self._render_list_item(text, bullet=num + '.', indent_level=level)
+            else:
+                self._render_paragraph(line)
 
     def _render_code_line(self, line):
         """Render a line inside a code fence with gray background."""
         if self._in_view(self.current_y, self.line_height):
-            # Draw gray background across full width
             draw_rectangle(self.gr, self.x, self.current_y,
                            self.x + self.width, self.current_y + self.line_height,
-                           COLOR_CODE_BG, 255, COLOR_CODE_BG, 255)
-            # Draw code text with code color on gray background
+                           theme.colors['code_bg'], 255,
+                           theme.colors['code_bg'], 255)
             if line:
                 draw_text(self.gr, self.x + 4, self.current_y,
-                          line, FONT_10, COLOR_CODE, self.width - 4,
-                          bg_color=COLOR_CODE_BG)
+                          line, FONT_10, theme.colors['code'],
+                          self.width - 4,
+                          bg_color=theme.colors['code_bg'])
         self.current_y += self.line_height
 
     def _is_ordered_list(self, line):
@@ -165,12 +254,13 @@ class MarkdownRenderer:
         return False
 
     def _render_hr(self):
-        """Render a horizontal rule (--- or *** or ___)."""
+        """Render a horizontal rule."""
         self.current_y += 4
         if self._in_view(self.current_y, 1):
             draw_rectangle(self.gr, self.x, self.current_y,
                       self.x + self.width, self.current_y + 1,
-                      COLOR_NORMAL, 255, COLOR_NORMAL, 255)
+                      theme.colors['normal'], 255,
+                      theme.colors['normal'], 255)
         self.current_y += 6
 
     def _render_header(self, line):
@@ -194,18 +284,57 @@ class MarkdownRenderer:
 
         if self._in_view(self.current_y, self.line_height + fontsize * 4):
             draw_text(self.gr, self.x, self.current_y,
-                      text, fontsize, COLOR_HEADER, self.width)
+                      text, fontsize, theme.colors['header'], self.width)
         self.current_y += self.line_height + fontsize * 4
         self.current_y += 3
 
-    def _render_list_item(self, text, bullet='\u2022'):
+    def _render_blockquote(self, line):
+        """Render a blockquote line (> text), supports nesting."""
+        depth = 0
+        temp = line
+        while temp.startswith('>'):
+            depth += 1
+            temp = temp[1:]
+            if temp.startswith(' '):
+                temp = temp[1:]
+
+        text_x = self.x + depth * BLOCKQUOTE_INDENT
+        self._blockquote_depth = depth
+        self._render_wrapped(temp.strip(), text_x)
+        self._blockquote_depth = 0
+
+    def _render_task_list_item(self, text, checked, indent_level=0):
+        """Render a task list item with checkbox."""
+        indent = indent_level * NESTED_LIST_INDENT
+        box_x = self.x + 10 + indent
+        box_y = self.current_y + 2
+        box_size = 8
+        text_x = box_x + box_size + 5
+
+        if self._in_view(self.current_y):
+            # Draw checkbox border
+            draw_rectangle(self.gr, box_x, box_y,
+                           box_x + box_size, box_y + box_size,
+                           theme.colors['normal'], 255,
+                           theme.colors['bg'], 255)
+            if checked:
+                # Draw filled check indicator
+                draw_rectangle(self.gr, box_x + 2, box_y + 2,
+                               box_x + box_size - 2, box_y + box_size - 2,
+                               theme.colors['task_done'], 255,
+                               theme.colors['task_done'], 255)
+
+        self._render_wrapped(text, text_x)
+
+    def _render_list_item(self, text, bullet='\u2022', indent_level=0):
         """Render a list item with bullet or number prefix."""
-        bullet_x = self.x + 10
-        text_x = self.x + 25
+        indent = indent_level * NESTED_LIST_INDENT
+        bullet_x = self.x + 10 + indent
+        text_x = self.x + 25 + indent
 
         if self._in_view(self.current_y):
             draw_text(self.gr, bullet_x, self.current_y,
-                      bullet, FONT_10, COLOR_NORMAL,
+                      bullet, FONT_10, theme.colors['normal'],
                       self.x + self.width - bullet_x)
         self._render_wrapped(text, text_x)
 
@@ -219,14 +348,12 @@ class MarkdownRenderer:
 
     def _buffer_table_line(self, line):
         """Buffer a table row for later rendering."""
-        # Split on | and strip outer empty elements
         parts = line.split('|')
         if parts and parts[0].strip() == '':
             parts = parts[1:]
         if parts and parts[-1].strip() == '':
             parts = parts[:-1]
         cells = [c.strip() for c in parts]
-        # Skip separator rows (|---|---|)
         if self._is_table_separator(cells):
             return
         self._table_buffer.append(cells)
@@ -240,12 +367,10 @@ class MarkdownRenderer:
 
         num_cols = max(len(r) for r in rows)
 
-        # Warn if table has too many columns
         if num_cols > TABLE_MAX_COLS:
             self._render_table_warning(num_cols)
             return
 
-        # Calculate column widths based on content
         col_widths = [0] * num_cols
         for row in rows:
             for i in range(len(row)):
@@ -257,30 +382,26 @@ class MarkdownRenderer:
         pad = TABLE_CELL_PAD
         total_w = sum(w + pad * 2 for w in col_widths) + num_cols + 1
 
-        # Check if table fits; if not, distribute evenly
         if total_w > self.width:
             avail = self.width - (num_cols + 1)
             per_col = avail // num_cols - pad * 2
             if per_col < 10:
-                # Table truly cannot fit
                 self._render_table_warning(num_cols)
                 return
             col_widths = [per_col] * num_cols
             total_w = self.width
 
-        # Render rows
         row_h = self.line_height + 2
         for ri in range(len(rows)):
             row = rows[ri]
             is_header = (ri == 0)
 
-            # Determine background color
             if is_header:
-                bg = COLOR_TABLE_HEADER_BG
+                bg = theme.colors['table_header_bg']
             elif ri % 2 == 0:
-                bg = COLOR_TABLE_ALT_BG
+                bg = theme.colors['table_alt_bg']
             else:
-                bg = COLOR_BG
+                bg = theme.colors['bg']
 
             if self._in_view(self.current_y, row_h):
                 cx = self.x
@@ -288,20 +409,17 @@ class MarkdownRenderer:
                     cell_w = col_widths[ci] + pad * 2
                     cell_text = row[ci] if ci < len(row) else ''
 
-                    # Draw cell background
                     draw_rectangle(self.gr, cx, self.current_y,
                                    cx + cell_w, self.current_y + row_h,
-                                   COLOR_TABLE_BORDER, 255, bg, 255)
+                                   theme.colors['table_border'], 255, bg, 255)
 
-                    # Draw cell text (clipped to cell width)
                     draw_text(self.gr, cx + pad, self.current_y + 1,
                               cell_text, FONT_10,
-                              COLOR_BOLD if is_header else COLOR_NORMAL,
+                              theme.colors['bold'] if is_header else theme.colors['normal'],
                               col_widths[ci])
-                    # Fake bold for header by drawing offset by 1px
                     if is_header:
                         draw_text(self.gr, cx + pad + 1, self.current_y + 1,
-                                  cell_text, FONT_10, COLOR_BOLD,
+                                  cell_text, FONT_10, theme.colors['bold'],
                                   col_widths[ci])
                     cx += cell_w
 
@@ -314,27 +432,48 @@ class MarkdownRenderer:
         msg = '[Table too wide (' + str(num_cols) + ' cols)]'
         if self._in_view(self.current_y):
             draw_text(self.gr, self.x, self.current_y,
-                      msg, FONT_10, COLOR_WARNING, self.width)
+                      msg, FONT_10, theme.colors['warning'], self.width)
         self.current_y += self.line_height
 
     def _render_paragraph(self, line):
         """Render a paragraph with inline formatting."""
         self._render_wrapped(line, self.x)
 
+    def _draw_line_decorations(self):
+        """Draw blockquote decorations for the current line."""
+        if self._blockquote_depth > 0 and self._in_view(self.current_y, self.line_height):
+            draw_rectangle(self.gr, self.x, self.current_y,
+                           self.x + self.width, self.current_y + self.line_height,
+                           theme.colors['blockquote_bg'], 255,
+                           theme.colors['blockquote_bg'], 255)
+            for d in range(self._blockquote_depth):
+                bx = self.x + d * BLOCKQUOTE_INDENT + 3
+                draw_rectangle(self.gr, bx, self.current_y,
+                               bx + BLOCKQUOTE_BAR_WIDTH,
+                               self.current_y + self.line_height,
+                               theme.colors['blockquote_bar'], 255,
+                               theme.colors['blockquote_bar'], 255)
+
     def _render_wrapped(self, text, start_x):
         """Render text with word wrapping and inline formatting."""
         segments = self._parse_inline(text)
         current_x = start_x
-        max_x = self.x + self.width
+        max_x = self.x + self.width - SCROLLBAR_WIDTH - 1
+
+        self._draw_line_decorations()
 
         for seg_type, seg_text in segments:
-            color = COLOR_NORMAL
+            color = theme.colors['normal']
             if seg_type == 'bold':
-                color = COLOR_BOLD
+                color = theme.colors['bold']
             elif seg_type == 'italic':
-                color = COLOR_ITALIC
+                color = theme.colors['italic']
             elif seg_type == 'code':
-                color = COLOR_CODE
+                color = theme.colors['code']
+            elif seg_type == 'link':
+                color = theme.colors['link']
+            elif seg_type == 'strikethrough':
+                color = theme.colors['strikethrough']
 
             words = seg_text.split(' ')
             for wi in range(len(words)):
@@ -344,6 +483,7 @@ class MarkdownRenderer:
                     if current_x + sp_w > max_x and current_x > start_x:
                         self.current_y += self.line_height
                         current_x = start_x
+                        self._draw_line_decorations()
                     else:
                         current_x += sp_w
 
@@ -355,14 +495,42 @@ class MarkdownRenderer:
                 if current_x + w > max_x and current_x > start_x:
                     self.current_y += self.line_height
                     current_x = start_x
+                    self._draw_line_decorations()
 
                 if self._in_view(self.current_y):
                     clip_w = max_x - current_x
+
+                    # Search highlighting
+                    if (self._search_term and
+                            self._search_term in word.lower()):
+                        draw_rectangle(self.gr, current_x, self.current_y,
+                                       current_x + w,
+                                       self.current_y + self.line_height,
+                                       theme.colors['search_hl'], 255,
+                                       theme.colors['search_hl'], 255)
+                        abs_y = self.current_y + self.scroll_offset
+                        if abs_y not in self._search_positions:
+                            self._search_positions.append(abs_y)
+
                     draw_text(self.gr, current_x, self.current_y,
                               word, FONT_10, color, clip_w)
                     if seg_type == 'bold':
                         draw_text(self.gr, current_x + 1, self.current_y,
                                   word, FONT_10, color, clip_w)
+
+                    # Strikethrough line
+                    if seg_type == 'strikethrough':
+                        mid_y = self.current_y + self.line_height // 2
+                        draw_rectangle(self.gr, current_x, mid_y,
+                                       current_x + w, mid_y + 1,
+                                       color, 255, color, 255)
+
+                elif self._search_term and self._search_term in word.lower():
+                    # Record position even for off-screen matches
+                    abs_y = self.current_y + self.scroll_offset
+                    if abs_y not in self._search_positions:
+                        self._search_positions.append(abs_y)
+
                 current_x += w
 
         self.current_y += self.line_height
@@ -371,14 +539,40 @@ class MarkdownRenderer:
         """Parse inline markdown formatting.
 
         Returns list of (type, text) tuples where type is one of:
-        'normal', 'bold', 'italic', 'code'.
+        'normal', 'bold', 'italic', 'code', 'strikethrough', 'link'.
         """
         segments = []
         i = 0
         current_text = ""
 
         while i < len(text):
-            # Check for **bold**
+            # ~~strikethrough~~
+            if i < len(text) - 1 and text[i:i + 2] == '~~':
+                if current_text:
+                    segments.append(('normal', current_text))
+                    current_text = ""
+                end = text.find('~~', i + 2)
+                if end != -1:
+                    segments.append(('strikethrough', text[i + 2:end]))
+                    i = end + 2
+                    continue
+
+            # [link text](url)
+            if text[i] == '[':
+                bracket_end = text.find(']', i + 1)
+                if (bracket_end != -1 and bracket_end + 1 < len(text)
+                        and text[bracket_end + 1] == '('):
+                    paren_end = text.find(')', bracket_end + 2)
+                    if paren_end != -1:
+                        if current_text:
+                            segments.append(('normal', current_text))
+                            current_text = ""
+                        link_text = text[i + 1:bracket_end]
+                        segments.append(('link', link_text))
+                        i = paren_end + 1
+                        continue
+
+            # **bold**
             if i < len(text) - 1 and text[i:i + 2] == '**':
                 if current_text:
                     segments.append(('normal', current_text))
@@ -389,7 +583,7 @@ class MarkdownRenderer:
                     i = end + 2
                     continue
 
-            # Check for *italic*
+            # *italic*
             elif text[i] == '*':
                 if current_text:
                     segments.append(('normal', current_text))
@@ -400,7 +594,7 @@ class MarkdownRenderer:
                     i = end + 1
                     continue
 
-            # Check for `code`
+            # `code`
             elif text[i] == '`':
                 if current_text:
                     segments.append(('normal', current_text))
@@ -420,12 +614,7 @@ class MarkdownRenderer:
         return segments if segments else [('normal', text)]
 
     def _render_image(self, line):
-        """Render an image from ![alt](source).
-
-        Supports two formats:
-        - File: ![alt](filename.png)
-        - Base64: ![alt](data:image/raw;base64,...)
-        """
+        """Render an image from ![alt](source)."""
         bracket_end = line.find(']')
         if bracket_end == -1:
             self._render_paragraph(line)
@@ -452,7 +641,6 @@ class MarkdownRenderer:
                 return
             img_w, img_h = size
 
-            # Clamp to available width
             display_w = img_w
             display_h = img_h
             if display_w > self.width:
@@ -510,26 +698,52 @@ class MarkdownRenderer:
                     result.append((buf >> bits) & 0xFF)
         return bytes(result)
 
+    def _draw_scrollbar(self):
+        """Draw a scrollbar on the right edge."""
+        if self._content_height <= self.height:
+            return
+
+        bar_x = self.x + self.width - SCROLLBAR_WIDTH
+        bar_y = self.y
+        bar_h = self.height
+
+        # Track
+        draw_rectangle(self.gr, bar_x, bar_y,
+                       bar_x + SCROLLBAR_WIDTH, bar_y + bar_h,
+                       theme.colors['scrollbar'], 255,
+                       theme.colors['scrollbar'], 255)
+
+        # Thumb
+        visible_ratio = self.height / self._content_height
+        thumb_h = max(SCROLLBAR_MIN_THUMB, int(bar_h * visible_ratio))
+        max_s = self._max_scroll()
+        if max_s > 0:
+            thumb_y = bar_y + int((bar_h - thumb_h) * self.scroll_offset / max_s)
+        else:
+            thumb_y = bar_y
+
+        draw_rectangle(self.gr, bar_x, thumb_y,
+                       bar_x + SCROLLBAR_WIDTH, thumb_y + thumb_h,
+                       theme.colors['scrollbar_thumb'], 255,
+                       theme.colors['scrollbar_thumb'], 255)
+
     def _max_scroll(self):
         """Get the maximum scroll offset."""
         max_off = self._content_height - self.height
         return max_off if max_off > 0 else 0
 
     def scroll_up(self, amount=20):
-        """Scroll content up."""
         self.scroll_offset -= amount
         if self.scroll_offset < 0:
             self.scroll_offset = 0
 
     def scroll_down(self, amount=20):
-        """Scroll content down."""
         self.scroll_offset += amount
         m = self._max_scroll()
         if self.scroll_offset > m:
             self.scroll_offset = m
 
     def scroll_by(self, delta):
-        """Scroll by an arbitrary pixel amount (positive = down)."""
         self.scroll_offset += delta
         if self.scroll_offset < 0:
             self.scroll_offset = 0
@@ -538,24 +752,20 @@ class MarkdownRenderer:
             self.scroll_offset = m
 
     def scroll_page_up(self):
-        """Scroll up by one page."""
         self.scroll_offset -= self.height
         if self.scroll_offset < 0:
             self.scroll_offset = 0
 
     def scroll_page_down(self):
-        """Scroll down by one page."""
         self.scroll_offset += self.height
         m = self._max_scroll()
         if self.scroll_offset > m:
             self.scroll_offset = m
 
     def scroll_to_top(self):
-        """Scroll to the beginning of the document."""
         self.scroll_offset = 0
 
     def scroll_to_bottom(self):
-        """Scroll to the end of the document."""
         self.scroll_offset = self._max_scroll()
 
 
@@ -583,43 +793,36 @@ class MarkdownDocument:
         self.renderer.render(self.content)
 
     def scroll_up(self):
-        """Scroll the document up and re-render."""
         if self.renderer:
             self.renderer.scroll_up()
             self.renderer.render(self.content)
 
     def scroll_down(self):
-        """Scroll the document down and re-render."""
         if self.renderer:
             self.renderer.scroll_down()
             self.renderer.render(self.content)
 
     def scroll_by(self, delta):
-        """Scroll by delta pixels and re-render."""
         if self.renderer:
             self.renderer.scroll_by(delta)
             self.renderer.render(self.content)
 
     def scroll_page_up(self):
-        """Scroll up by one page and re-render."""
         if self.renderer:
             self.renderer.scroll_page_up()
             self.renderer.render(self.content)
 
     def scroll_page_down(self):
-        """Scroll down by one page and re-render."""
         if self.renderer:
             self.renderer.scroll_page_down()
             self.renderer.render(self.content)
 
     def scroll_to_top(self):
-        """Scroll to beginning and re-render."""
         if self.renderer:
             self.renderer.scroll_to_top()
             self.renderer.render(self.content)
 
     def scroll_to_bottom(self):
-        """Scroll to end and re-render."""
         if self.renderer:
             self.renderer.scroll_to_bottom()
             self.renderer.render(self.content)

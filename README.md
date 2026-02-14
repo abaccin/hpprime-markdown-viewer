@@ -9,14 +9,22 @@ Read beautifully formatted Markdown documents right on your calculator's 320×24
 ## Features
 
 - **Headers** — H1 through H6 with distinct sizing and color
-- **Bold**, *italic*, and `inline code` formatting
-- **Bullet lists** and **numbered lists**
+- **Bold**, *italic*, ~~strikethrough~~, and `inline code` formatting
+- **[Links](url)** rendered in a distinct color
+- **Blockquotes** with accent bar (supports nesting)
+- **Bullet lists** and **numbered lists** with nesting support
+- **Task lists** — `- [x]` and `- [ ]` checkboxes
 - **Horizontal rules** (`---`, `***`, `___`)
 - **Tables** with header styling and alternating row colors (warns if too wide)
 - **Embedded images** via base64-encoded raw pixel data or **image files** (PNG, etc.)
 - **Word wrapping** that fits the 320px-wide screen
 - **Smooth scrolling** with Up/Down keys or **touch drag**
+- **Scroll position indicator** — thin scrollbar on the right edge
 - **Built-in file browser** to pick `.md` files from calculator storage
+- **Back navigation** — press ESC to return to file browser without exiting
+- **Search** — press F1 to find text, F2 for next match, with highlighting
+- **Light / Dark theme** — press F6 to toggle, works in browser and viewer
+- **Bookmarks** — automatically saves last file and scroll position
 
 ## Screenshots
 
@@ -51,13 +59,29 @@ Place any `.md` files in the app's storage folder on the calculator. The built-i
 
 ## Controls
 
+### File Browser
+
 | Key | Action |
 |---|---|
-| **Up** | Scroll up / previous file |
-| **Down** | Scroll down / next file |
+| **Up / Down** | Navigate file list |
+| **Enter / Tap** | Open selected file |
+| **Theme** (F6) | Toggle light / dark theme |
+| **ON** | Exit app |
+
+### Document Viewer
+
+| Key | Action |
+|---|---|
+| **Up / Down** | Scroll line by line |
+| **+ / -** | Scroll page by page |
+| **Backspace** | Jump to start |
+| **LOG** | Jump to end |
+| **ESC** | Back to file browser |
+| **Find** (F1) | Search for text |
+| **Next** (F2) | Jump to next search match |
+| **Theme** (F6) | Toggle light / dark theme |
 | **Touch drag** | Drag to scroll document |
-| **Enter** | Open selected file |
-| **ON** | Exit viewer / app |
+| **ON** | Exit app |
 
 ## Supported Markdown Syntax
 
@@ -66,9 +90,13 @@ Place any `.md` files in the app's storage folder on the calculator. The built-i
 | Headings | `# H1` through `###### H6` |
 | Bold | `**bold**` |
 | Italic | `*italic*` |
+| Strikethrough | `~~deleted~~` |
 | Inline code | `` `code` `` |
-| Bullet list | `- item` or `* item` |
-| Ordered list | `1. item` |
+| Links | `[text](url)` |
+| Blockquotes | `> quote` (nest with `>>`) |
+| Bullet list | `- item` or `* item` (indent for nesting) |
+| Ordered list | `1. item` (indent for nesting) |
+| Task list | `- [ ] todo` or `- [x] done` |
 | Horizontal rule | `---`, `***`, or `___` |
 | Tables | `\| col1 \| col2 \|` (up to 5 columns) |
 | Images | `![alt](image.png)` or `![alt](data:image/raw;base64,...)` |
@@ -82,7 +110,8 @@ MarkdownViewer.hpappdir/
 ├── main.py              # Entry point — file browser + viewer loop
 ├── markdown_viewer.py   # MarkdownViewer, MarkdownRenderer & MarkdownDocument classes
 ├── graphics.py          # Drawing primitives (text, rectangles, images)
-├── constants.py         # Colors, font sizes, graphics buffer IDs
+├── constants.py         # Colors, font sizes, layout constants
+├── theme.py             # Light/dark theme palettes and toggle
 ├── file_ops.py          # File listing via HP Prime AFiles()
 ├── keycodes.py          # Key code constants for GETKEY
 ├── utils.py             # Misc helpers (color math, text measurement)
@@ -125,11 +154,13 @@ viewer.render()
 
 ## Limitations
 
-- No nested lists or blockquotes
 - Tables wider than 5 columns display a warning instead of rendering
-- No link rendering (URLs are displayed as plain text)
-- Code fences (` ``` `) are recognized but the enclosed block is rendered as plain text
+- Code fences (` ``` `) are recognized but the enclosed block is rendered as plain text (no syntax highlighting)
+- Links are displayed in color but cannot be opened on the calculator
 - Images must be in the custom base64-encoded raw RGB format described above, or loaded from image files in the app folder
+- Search highlights matches in paragraphs, lists, and blockquotes (not in headers, tables, or code fences)
+- Bold is simulated via 1px-offset double-draw (no true bold font on HP Prime)
+- Italic is rendered as a distinct color (no slanted font available)
 
 ## Contributing
 
@@ -137,9 +168,10 @@ Contributions are welcome! Feel free to open issues or submit pull requests.
 
 Some ideas for future improvements:
 
-- Blockquote support
-- Link highlighting
-- Theme / color customization
+- Table of contents / jump-to-heading navigation
+- Horizontal scrolling for wide tables and code blocks
+- Syntax highlighting in code fences
+- On-screen keyboard for search (instead of PPL INPUT dialog)
 
 ## License
 

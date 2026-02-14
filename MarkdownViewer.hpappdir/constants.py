@@ -45,5 +45,21 @@ COLOR_CODE_BG = const(0xE8E8E8)
 TABLE_MAX_COLS = const(5)
 TABLE_CELL_PAD = const(3)
 
+# Scrollbar
+SCROLLBAR_WIDTH = const(4)
+SCROLLBAR_MIN_THUMB = const(15)
+
+# Blockquote
+BLOCKQUOTE_INDENT = const(15)
+BLOCKQUOTE_BAR_WIDTH = const(3)
+
+# Nested lists
+NESTED_LIST_INDENT = const(15)
+
+# Menu bar
+MENU_Y = const(220)
+MENU_HEIGHT = const(20)
+VIEWER_HEIGHT = const(212)
+
 # Touch/drag scrolling
 DRAG_THRESHOLD = const(3)
