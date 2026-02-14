@@ -24,7 +24,9 @@ Read beautifully formatted Markdown documents right on your calculator's 320×24
 - **Back navigation** — press ESC to return to file browser without exiting
 - **Search** — press F1 to find text, F2 for next match, with highlighting
 - **Light / Dark theme** — press F6 to toggle, works in browser and viewer
-- **Bookmarks** — automatically saves last file and scroll position
+- **Multiple bookmarks per file** — long-press to add, red indicators on scrollbar
+- **Bookmark manager** — tap Marks to view, jump to, or delete bookmarks
+- **Auto-save** — last opened file and scroll position remembered
 
 ## Screenshots
 
@@ -79,7 +81,9 @@ Place any `.md` files in the app's storage folder on the calculator. The built-i
 | **ESC** | Back to file browser |
 | **Find** (F1) | Search for text |
 | **Next** (F2) | Jump to next search match |
+| **Marks** | Open bookmark manager |
 | **Theme** (F6) | Toggle light / dark theme |
+| **Long press** | Add bookmark at current position |
 | **Touch drag** | Drag to scroll document |
 | **ON** | Exit app |
 
@@ -107,11 +111,15 @@ Place any `.md` files in the app's storage folder on the calculator. The built-i
 
 ```
 MarkdownViewer.hpappdir/
-├── main.py              # Entry point — file browser + viewer loop
+├── main.py              # Entry point — viewer loop + app-specific logic
+├── browser.py           # Reusable file picker (configurable title, ext, menu)
+├── ui.py                # Reusable UI: menu bar, input bar, context menu, list manager
+├── input_helpers.py     # Reusable keyboard and touch input helpers
 ├── markdown_viewer.py   # MarkdownViewer, MarkdownRenderer & MarkdownDocument classes
 ├── graphics.py          # Drawing primitives (text, rectangles, images)
 ├── constants.py         # Colors, font sizes, layout constants
 ├── theme.py             # Light/dark theme palettes and toggle
+├── bookmarks.py         # Multi-bookmark storage per file
 ├── file_ops.py          # File listing via HP Prime AFiles()
 ├── keycodes.py          # Key code constants for GETKEY
 ├── utils.py             # Misc helpers (color math, text measurement)
@@ -171,7 +179,6 @@ Some ideas for future improvements:
 - Table of contents / jump-to-heading navigation
 - Horizontal scrolling for wide tables and code blocks
 - Syntax highlighting in code fences
-- On-screen keyboard for search (instead of PPL INPUT dialog)
 
 ## License
 

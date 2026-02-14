@@ -91,7 +91,20 @@ browser and the document viewer.
 
 ## Bookmarks
 
-Your last opened file and scroll position are
+Long-press anywhere in the document to add a bookmark
+at the current scroll position.
+
+Bookmarks appear as **red marks** on the scrollbar.
+
+Tap **Marks** in the menu bar to open the bookmark
+manager where you can:
+- Jump to any saved bookmark
+- Delete bookmarks you no longer need
+
+Multiple bookmarks per file are supported and
+stored automatically.
+
+Your last opened file and scroll position are also
 automatically saved. When you return to the file
 browser, your last file is marked with a triangle.
 

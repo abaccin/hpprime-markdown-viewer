@@ -63,3 +63,6 @@ VIEWER_HEIGHT = const(212)
 
 # Touch/drag scrolling
 DRAG_THRESHOLD = const(3)
+
+# Long press (milliseconds)
+LONG_PRESS_MS = const(600)

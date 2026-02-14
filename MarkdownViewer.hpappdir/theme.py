@@ -31,6 +31,12 @@ LIGHT = {
     'menu_bg': 0x000080,
     'menu_text': 0xFFFFFF,
     'menu_divider': 0x4040A0,
+    'bookmark_mark': 0xF80000,
+    'ctx_bg': 0xF0F0F0,
+    'ctx_border': 0x808080,
+    'ctx_text': 0x000000,
+    'ctx_sel': 0x000080,
+    'ctx_sel_text': 0xFFFFFF,
 }
 
 DARK = {
@@ -64,6 +70,12 @@ DARK = {
     'menu_bg': 0x333333,
     'menu_text': 0xD4D4D4,
     'menu_divider': 0x555555,
+    'bookmark_mark': 0xF80000,
+    'ctx_bg': 0x2D2D2D,
+    'ctx_border': 0x555555,
+    'ctx_text': 0xD4D4D4,
+    'ctx_sel': 0x264F78,
+    'ctx_sel_text': 0xFFFFFF,
 }
 
 # Current active theme colors (mutable dict)

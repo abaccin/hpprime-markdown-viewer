@@ -110,6 +110,17 @@ class MarkdownViewer:
         if self.document.renderer:
             self.document.renderer.scroll_offset = pos
 
+    def set_bookmarks(self, positions):
+        """Set bookmark positions for scrollbar display."""
+        if self.document.renderer:
+            self.document.renderer._bookmarks = positions
+
+    def get_content_height(self):
+        """Get total content height (for bookmark position context)."""
+        if self.document.renderer:
+            return self.document.renderer._content_height
+        return 0
+
 
 class MarkdownRenderer:
     """Lightweight markdown renderer for HP Prime display (320x240)."""
@@ -130,6 +141,7 @@ class MarkdownRenderer:
         self._search_term = None
         self._search_positions = []
         self._search_match_idx = 0
+        self._bookmarks = []
 
     def _in_view(self, y, h=12):
         """Check if a line at y with height h is within the visible area."""
@@ -726,6 +738,20 @@ class MarkdownRenderer:
                        bar_x + SCROLLBAR_WIDTH, thumb_y + thumb_h,
                        theme.colors['scrollbar_thumb'], 255,
                        theme.colors['scrollbar_thumb'], 255)
+
+        # Bookmark marks (red indicators)
+        if self._bookmarks and self._content_height > 0:
+            for bpos in self._bookmarks:
+                if bpos <= self._content_height:
+                    mark_y = bar_y + int(bar_h * bpos / self._content_height)
+                    if mark_y < bar_y:
+                        mark_y = bar_y
+                    if mark_y > bar_y + bar_h - 2:
+                        mark_y = bar_y + bar_h - 2
+                    draw_rectangle(self.gr, bar_x - 1, mark_y,
+                                   bar_x + SCROLLBAR_WIDTH + 1, mark_y + 2,
+                                   theme.colors['bookmark_mark'], 255,
+                                   theme.colors['bookmark_mark'], 255)
 
     def _max_scroll(self):
         """Get the maximum scroll offset."""
