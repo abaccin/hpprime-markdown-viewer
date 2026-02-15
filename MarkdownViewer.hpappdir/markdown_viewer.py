@@ -121,9 +121,121 @@ class MarkdownViewer:
             return self.document.renderer._content_height
         return 0
 
+    def get_headers(self):
+        """Extract table of contents from the document.
+
+        Returns list of (level, title, line_index) tuples.
+        """
+        if not self.document.content:
+            return []
+        headers = []
+        for i, line in enumerate(self.document.content.split('\n')):
+            stripped = line.strip()
+            if stripped.startswith('#'):
+                level = 0
+                while level < len(stripped) and stripped[level] == '#':
+                    level += 1
+                if level > 6:
+                    level = 6
+                title = stripped[level:].strip()
+                if title:
+                    headers.append((level, title, i))
+        return headers
+
+    def scroll_to_line(self, line_index):
+        """Scroll so that the given source line index is visible.
+
+        Does a temporary render pass to map source lines to pixel offsets.
+        """
+        if not self.document.renderer or not self.document.content:
+            return
+        r = self.document.renderer
+        # Save state
+        saved_scroll = r.scroll_offset
+        saved_height = r._content_height
+        r.scroll_offset = 0
+        r._content_height = 0
+        # Walk lines to compute pixel offset
+        lines = self.document.content.split('\n')
+        pixel_y = r.y
+        target_y = 0
+        in_fence = False
+        for idx, line in enumerate(lines):
+            if idx == line_index:
+                target_y = pixel_y - r.y
+                break
+            stripped = line.strip()
+            if stripped.startswith('```'):
+                in_fence = not in_fence
+                continue
+            if in_fence or not stripped:
+                pixel_y += r.line_height if stripped or in_fence else r.line_height // 2
+            elif stripped.startswith('#'):
+                lv = 0
+                while lv < len(stripped) and stripped[lv] == '#':
+                    lv += 1
+                if lv == 1:
+                    pixel_y += r.line_height + 3 * 4 + 3 + 3
+                elif lv == 2:
+                    pixel_y += r.line_height + 2 * 4 + 3 + 2
+                else:
+                    pixel_y += r.line_height + 1 * 4 + 3
+            else:
+                pixel_y += r.line_height
+        # Restore content height if known
+        r._content_height = saved_height
+        r.scroll_offset = max(0, target_y)
+        m = r._max_scroll()
+        if r.scroll_offset > m:
+            r.scroll_offset = m
+        self.document.render(self.gr, height=self.height)
+
+    def get_link_at(self, tx, ty):
+        """Return the URL of a link at screen coordinates, or None."""
+        if not self.document.renderer:
+            return None
+        for x1, y1, x2, y2, url in self.document.renderer._link_zones:
+            if x1 <= tx <= x2 and y1 <= ty <= y2:
+                return url
+        return None
+
+    def get_progress_percent(self):
+        """Return scroll progress as 0–100 integer."""
+        if not self.document.renderer:
+            return 0
+        r = self.document.renderer
+        m = r._max_scroll()
+        if m <= 0:
+            return 100
+        return min(100, int(r.scroll_offset * 100 / m))
+
+    def get_document_stats(self):
+        """Return (line_count, word_count, read_time_min) for the document."""
+        content = self.document.content
+        if not content:
+            return (0, 0, 0)
+        lines = content.split('\n')
+        line_count = len(lines)
+        word_count = 0
+        for line in lines:
+            words = line.split()
+            word_count += len(words)
+        # Average reading speed: ~200 words/min
+        read_min = (word_count + 199) // 200
+        if read_min < 1 and word_count > 0:
+            read_min = 1
+        return (line_count, word_count, read_min)
+
 
 class MarkdownRenderer:
     """Lightweight markdown renderer for HP Prime display (320x240)."""
+
+    # Base64 lookup table (class-level constant, built once)
+    _B64 = {}
+    _b64c = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    for _i in range(64):
+        _B64[_b64c[_i]] = _i
+    del _b64c, _i
 
     def __init__(self, gr, x=5, y=5, width=310, height=230):
         self.gr = gr
@@ -142,6 +254,7 @@ class MarkdownRenderer:
         self._search_positions = []
         self._search_match_idx = 0
         self._bookmarks = []
+        self._link_zones = []  # [(x1, y1, x2, y2, url)] for tap detection
 
     def _in_view(self, y, h=12):
         """Check if a line at y with height h is within the visible area."""
@@ -149,9 +262,10 @@ class MarkdownRenderer:
 
     def clear(self):
         """Clear the rendering area."""
+        bg = theme.colors['bg']
         draw_rectangle(self.gr, self.x, self.y,
                   self.x + self.width, self.y + self.height,
-                  theme.colors['bg'], 255, theme.colors['bg'], 255)
+                  bg, 255, bg, 255)
         self.current_y = self.y
 
     def render(self, markdown_text):
@@ -161,6 +275,7 @@ class MarkdownRenderer:
         self._table_buffer = []
         self._in_code_fence = False
         self._blockquote_depth = 0
+        self._link_zones = []
         if self._search_term:
             self._search_positions = []
         lines = markdown_text.split('\n')
@@ -247,15 +362,14 @@ class MarkdownRenderer:
     def _render_code_line(self, line):
         """Render a line inside a code fence with gray background."""
         if self._in_view(self.current_y, self.line_height):
+            code_bg = theme.colors['code_bg']
             draw_rectangle(self.gr, self.x, self.current_y,
                            self.x + self.width, self.current_y + self.line_height,
-                           theme.colors['code_bg'], 255,
-                           theme.colors['code_bg'], 255)
+                           code_bg, 255, code_bg, 255)
             if line:
                 draw_text(self.gr, self.x + 4, self.current_y,
                           line, FONT_10, theme.colors['code'],
-                          self.width - 4,
-                          bg_color=theme.colors['code_bg'])
+                          self.width - 4, bg_color=code_bg)
         self.current_y += self.line_height
 
     def _is_ordered_list(self, line):
@@ -404,16 +518,24 @@ class MarkdownRenderer:
             total_w = self.width
 
         row_h = self.line_height + 2
+        c = theme.colors
+        th_bg = c['table_header_bg']
+        alt_bg = c['table_alt_bg']
+        bg = c['bg']
+        t_border = c['table_border']
+        c_bold = c['bold']
+        c_normal = c['normal']
+
         for ri in range(len(rows)):
             row = rows[ri]
             is_header = (ri == 0)
 
             if is_header:
-                bg = theme.colors['table_header_bg']
+                row_bg = th_bg
             elif ri % 2 == 0:
-                bg = theme.colors['table_alt_bg']
+                row_bg = alt_bg
             else:
-                bg = theme.colors['bg']
+                row_bg = bg
 
             if self._in_view(self.current_y, row_h):
                 cx = self.x
@@ -423,15 +545,15 @@ class MarkdownRenderer:
 
                     draw_rectangle(self.gr, cx, self.current_y,
                                    cx + cell_w, self.current_y + row_h,
-                                   theme.colors['table_border'], 255, bg, 255)
+                                   t_border, 255, row_bg, 255)
 
+                    txt_color = c_bold if is_header else c_normal
                     draw_text(self.gr, cx + pad, self.current_y + 1,
-                              cell_text, FONT_10,
-                              theme.colors['bold'] if is_header else theme.colors['normal'],
+                              cell_text, FONT_10, txt_color,
                               col_widths[ci])
                     if is_header:
                         draw_text(self.gr, cx + pad + 1, self.current_y + 1,
-                                  cell_text, FONT_10, theme.colors['bold'],
+                                  cell_text, FONT_10, c_bold,
                                   col_widths[ci])
                     cx += cell_w
 
@@ -454,17 +576,17 @@ class MarkdownRenderer:
     def _draw_line_decorations(self):
         """Draw blockquote decorations for the current line."""
         if self._blockquote_depth > 0 and self._in_view(self.current_y, self.line_height):
+            bq_bg = theme.colors['blockquote_bg']
+            bq_bar = theme.colors['blockquote_bar']
             draw_rectangle(self.gr, self.x, self.current_y,
                            self.x + self.width, self.current_y + self.line_height,
-                           theme.colors['blockquote_bg'], 255,
-                           theme.colors['blockquote_bg'], 255)
+                           bq_bg, 255, bq_bg, 255)
             for d in range(self._blockquote_depth):
                 bx = self.x + d * BLOCKQUOTE_INDENT + 3
                 draw_rectangle(self.gr, bx, self.current_y,
                                bx + BLOCKQUOTE_BAR_WIDTH,
                                self.current_y + self.line_height,
-                               theme.colors['blockquote_bar'], 255,
-                               theme.colors['blockquote_bar'], 255)
+                               bq_bar, 255, bq_bar, 255)
 
     def _render_wrapped(self, text, start_x):
         """Render text with word wrapping and inline formatting."""
@@ -474,18 +596,24 @@ class MarkdownRenderer:
 
         self._draw_line_decorations()
 
-        for seg_type, seg_text in segments:
-            color = theme.colors['normal']
-            if seg_type == 'bold':
-                color = theme.colors['bold']
-            elif seg_type == 'italic':
-                color = theme.colors['italic']
-            elif seg_type == 'code':
-                color = theme.colors['code']
-            elif seg_type == 'link':
-                color = theme.colors['link']
-            elif seg_type == 'strikethrough':
-                color = theme.colors['strikethrough']
+        # Cache frequently accessed theme colors
+        c = theme.colors
+        color_map = {
+            'normal': c['normal'],
+            'bold': c['bold'],
+            'italic': c['italic'],
+            'code': c['code'],
+            'link': c['link'],
+            'strikethrough': c['strikethrough'],
+        }
+        search_hl = c['search_hl']
+        search_term = self._search_term
+
+        for seg in segments:
+            seg_type = seg[0]
+            seg_text = seg[1]
+            seg_url = seg[2] if len(seg) > 2 else None
+            color = color_map.get(seg_type, color_map['normal'])
 
             words = seg_text.split(' ')
             for wi in range(len(words)):
@@ -513,13 +641,11 @@ class MarkdownRenderer:
                     clip_w = max_x - current_x
 
                     # Search highlighting
-                    if (self._search_term and
-                            self._search_term in word.lower()):
+                    if search_term and search_term in word.lower():
                         draw_rectangle(self.gr, current_x, self.current_y,
                                        current_x + w,
                                        self.current_y + self.line_height,
-                                       theme.colors['search_hl'], 255,
-                                       theme.colors['search_hl'], 255)
+                                       search_hl, 255, search_hl, 255)
                         abs_y = self.current_y + self.scroll_offset
                         if abs_y not in self._search_positions:
                             self._search_positions.append(abs_y)
@@ -537,7 +663,15 @@ class MarkdownRenderer:
                                        current_x + w, mid_y + 1,
                                        color, 255, color, 255)
 
-                elif self._search_term and self._search_term in word.lower():
+                    # Record link zones for tap detection
+                    if seg_type == 'link' and seg_url:
+                        self._link_zones.append((
+                            current_x, self.current_y,
+                            current_x + w,
+                            self.current_y + self.line_height,
+                            seg_url))
+
+                elif search_term and search_term in word.lower():
                     # Record position even for off-screen matches
                     abs_y = self.current_y + self.scroll_offset
                     if abs_y not in self._search_positions:
@@ -550,19 +684,19 @@ class MarkdownRenderer:
     def _parse_inline(self, text):
         """Parse inline markdown formatting.
 
-        Returns list of (type, text) tuples where type is one of:
-        'normal', 'bold', 'italic', 'code', 'strikethrough', 'link'.
+        Returns list of tuples: (type, text) or (type, text, url) for links.
+        Type is one of: 'normal', 'bold', 'italic', 'code', 'strikethrough', 'link'.
         """
         segments = []
         i = 0
-        current_text = ""
+        buf = []  # Use list + join instead of string concatenation
 
         while i < len(text):
             # ~~strikethrough~~
             if i < len(text) - 1 and text[i:i + 2] == '~~':
-                if current_text:
-                    segments.append(('normal', current_text))
-                    current_text = ""
+                if buf:
+                    segments.append(('normal', ''.join(buf)))
+                    buf = []
                 end = text.find('~~', i + 2)
                 if end != -1:
                     segments.append(('strikethrough', text[i + 2:end]))
@@ -576,19 +710,20 @@ class MarkdownRenderer:
                         and text[bracket_end + 1] == '('):
                     paren_end = text.find(')', bracket_end + 2)
                     if paren_end != -1:
-                        if current_text:
-                            segments.append(('normal', current_text))
-                            current_text = ""
+                        if buf:
+                            segments.append(('normal', ''.join(buf)))
+                            buf = []
                         link_text = text[i + 1:bracket_end]
-                        segments.append(('link', link_text))
+                        link_url = text[bracket_end + 2:paren_end]
+                        segments.append(('link', link_text, link_url))
                         i = paren_end + 1
                         continue
 
             # **bold**
             if i < len(text) - 1 and text[i:i + 2] == '**':
-                if current_text:
-                    segments.append(('normal', current_text))
-                    current_text = ""
+                if buf:
+                    segments.append(('normal', ''.join(buf)))
+                    buf = []
                 end = text.find('**', i + 2)
                 if end != -1:
                     segments.append(('bold', text[i + 2:end]))
@@ -597,9 +732,9 @@ class MarkdownRenderer:
 
             # *italic*
             elif text[i] == '*':
-                if current_text:
-                    segments.append(('normal', current_text))
-                    current_text = ""
+                if buf:
+                    segments.append(('normal', ''.join(buf)))
+                    buf = []
                 end = text.find('*', i + 1)
                 if end != -1:
                     segments.append(('italic', text[i + 1:end]))
@@ -608,20 +743,20 @@ class MarkdownRenderer:
 
             # `code`
             elif text[i] == '`':
-                if current_text:
-                    segments.append(('normal', current_text))
-                    current_text = ""
+                if buf:
+                    segments.append(('normal', ''.join(buf)))
+                    buf = []
                 end = text.find('`', i + 1)
                 if end != -1:
                     segments.append(('code', text[i + 1:end]))
                     i = end + 1
                     continue
 
-            current_text += text[i]
+            buf.append(text[i])
             i += 1
 
-        if current_text:
-            segments.append(('normal', current_text))
+        if buf:
+            segments.append(('normal', ''.join(buf)))
 
         return segments if segments else [('normal', text)]
 
@@ -693,10 +828,7 @@ class MarkdownRenderer:
 
     def _base64_decode(self, data):
         """Decode base64 string to bytes."""
-        table = {}
-        chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-        for i in range(64):
-            table[chars[i]] = i
+        table = MarkdownRenderer._B64
         data = data.replace('\n', '').replace('\r', '').replace(' ', '').rstrip('=')
         result = []
         buf = 0

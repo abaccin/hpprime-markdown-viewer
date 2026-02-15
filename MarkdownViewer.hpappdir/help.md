@@ -3,7 +3,7 @@
 ## The First Markdown Renderer for Your Calculator!
 
 Read beautifully formatted documents right on your HP Prime.
-No PC required.
+No PC required. See also: [Link Demo](demo.md)
 
 ## Navigation
 
@@ -82,6 +82,34 @@ viewer.render()
 Tap **Find** in the menu bar to search for text.
 Tap **Next** to jump to the next match.
 Matching text is highlighted in the document.
+
+## Table of Contents
+
+Tap **TOC** in the menu bar (or press **F3**) to
+see a list of all headers in the document.
+Select a header to jump directly to that section.
+
+## Document Info
+
+Tap **Info** in the menu bar (or press **F5**) to
+see document statistics:
+- Filename
+- Line count
+- Word count
+- Estimated reading time
+
+## Internal Links
+
+Links to other `.md` files (e.g. `[See setup](setup.md)`)
+are tappable. Tap to open the linked file.
+Press **ESC** to go back to the previous file.
+Multiple levels of back-navigation are supported.
+
+## Reading Progress
+
+A percentage indicator is shown at the bottom of
+the screen, showing how far you have scrolled
+through the document.
 
 ## Themes
 

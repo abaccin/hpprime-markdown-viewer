@@ -3,58 +3,44 @@
 Reusable — no app-specific dependencies.
 """
 
-from hpprime import eval
-from graphics import get_mouse
+from hpprime import eval as heval
 
 
 def get_key():
     """Read the current key code, or 0 if none pressed."""
-    k = eval('GETKEY()')
+    k = heval('GETKEY()')
     return k if k > 0 else 0
 
 
 def get_touch_y():
     """Get the Y coordinate of the current touch, or -1 if not touching."""
-    try:
-        m = get_mouse()
-        if not m or type(m) is not list:
-            return -1
-        first = m[0]
-        if type(first) is list:
-            if len(first) >= 2 and first[0] >= 0:
-                return int(first[1])
-        elif type(first) in (int, float):
-            if len(m) >= 2 and m[0] >= 0:
-                return int(m[1])
-    except Exception:
-        pass
+    m = heval("mouse")
+    if m:
+        f = m[0]
+        if type(f) is list:
+            if len(f) >= 2 and f[0] >= 0:
+                return int(f[1])
+        elif type(f) in (int, float) and len(m) >= 2 and m[0] >= 0:
+            return int(m[1])
     return -1
 
 
 def get_touch():
     """Get (x, y) of the current touch, or (-1, -1) if not touching."""
-    try:
-        m = get_mouse()
-        if not m or type(m) is not list:
-            return (-1, -1)
-        first = m[0]
-        if type(first) is list:
-            if len(first) >= 2 and first[0] >= 0:
-                return (int(first[0]), int(first[1]))
-        elif type(first) in (int, float):
-            if len(m) >= 2 and m[0] >= 0:
-                return (int(m[0]), int(m[1]))
-    except Exception:
-        pass
+    m = heval("mouse")
+    if m:
+        f = m[0]
+        if type(f) is list:
+            if len(f) >= 2 and f[0] >= 0:
+                return (int(f[0]), int(f[1]))
+        elif type(f) in (int, float) and len(m) >= 2 and m[0] >= 0:
+            return (int(m[0]), int(m[1]))
     return (-1, -1)
 
 
 def get_ticks():
     """Get current tick count in milliseconds."""
-    try:
-        return int(eval('ticks()'))
-    except:
-        return 0
+    return int(heval('ticks()'))
 
 
 def get_menu_tap(tx, ty, menu_y=220, menu_h=20):

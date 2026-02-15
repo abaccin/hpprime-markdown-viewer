@@ -1,19 +1,23 @@
 """MarkdownViewer for HP Prime — main entry point."""
 
-from constants import (GR_AFF, DRAG_THRESHOLD, MENU_Y, VIEWER_HEIGHT,
-    LONG_PRESS_MS)
+from constants import (GR_AFF, DRAG_THRESHOLD, MENU_Y, VIEWER_HEIGHT_FULL,
+    LONG_PRESS_MS, FONT_10)
 from hpprime import fillrect
 from keycodes import (KEY_UP, KEY_DOWN, KEY_ESC, KEY_PLUS,
-    KEY_MINUS, KEY_BACKSPACE, KEY_LOG, KEY_F1, KEY_F2, KEY_F6)
+    KEY_MINUS, KEY_BACKSPACE, KEY_LOG, KEY_F1, KEY_F2,
+    KEY_F3, KEY_F4, KEY_F5, KEY_F6)
 from markdown_viewer import MarkdownViewer
 from input_helpers import get_key, get_touch, get_ticks, get_menu_tap
-from ui import (draw_menu, show_input_bar, show_context_menu,
-    show_list_manager)
+from ui import (draw_menu, draw_notch, is_notch_tap,
+    save_menu_area, restore_menu_area,
+    show_input_bar, show_context_menu, show_list_manager,
+    show_stats_dialog)
+from graphics import draw_text, text_width
 from browser import file_picker
 import theme
 import bookmarks
 
-VIEWER_MENU = ["Find", "Next", "Marks", "", "", "Theme"]
+VIEWER_MENU = ["Find", "Next", "Marks", "TOC", "Info", "Theme"]
 BROWSER_MENU = ["", "", "", "", "", "Theme"]
 
 
@@ -52,6 +56,19 @@ def _browser_menu_tap(slot):
     return False
 
 
+def _draw_progress(viewer):
+    """Draw a small progress pill at the bottom-left, styled like the notch."""
+    pct = viewer.get_progress_percent()
+    label = str(pct) + '%'
+    tw = text_width(label, FONT_10)
+    pw = tw + 8
+    px = 0
+    py = 227
+    c = theme.colors
+    fillrect(GR_AFF, px, py, pw, 13, c['menu_bg'], c['menu_bg'])
+    draw_text(GR_AFF, px + 4, py + 2, label, FONT_10, c['menu_text'])
+
+
 def main():
     """Main entry point — file browser then markdown viewer."""
     last_file, last_scroll = load_last_file()
@@ -70,7 +87,9 @@ def main():
             clear_screen()
             return
 
-        viewer = MarkdownViewer(GR_AFF, height=VIEWER_HEIGHT)
+        # Navigation back-stack: list of (filename, scroll_pos)
+        nav_stack = []
+        viewer = MarkdownViewer(GR_AFF, height=VIEWER_HEIGHT_FULL)
         viewer.load_markdown_file(filename)
 
         if filename == last_file and last_scroll > 0:
@@ -79,10 +98,11 @@ def main():
         marks = bookmarks.load(filename)
         viewer.set_bookmarks(marks)
 
-        fillrect(0, 0, 0, 320, MENU_Y,
+        fillrect(0, 0, 0, 320, 240,
                  theme.colors['bg'], theme.colors['bg'])
         viewer.render()
-        draw_menu(VIEWER_MENU, menu_y=MENU_Y)
+        draw_notch()
+        _draw_progress(viewer)
 
         drag_last_y = -1
         touch_down = False
@@ -90,26 +110,45 @@ def main():
         tap_y = -1
         touch_start_time = 0
         long_press_fired = False
+        menu_visible = False
         action = 'back'
 
         def redraw():
-            fillrect(0, 0, 0, 320, MENU_Y,
+            fillrect(0, 0, 0, 320, 240,
                      theme.colors['bg'], theme.colors['bg'])
             viewer.render()
+            draw_notch()
+            _draw_progress(viewer)
+
+        def hide_menu():
+            nonlocal menu_visible
+            if menu_visible:
+                restore_menu_area(MENU_Y)
+                draw_notch()
+                menu_visible = False
+
+        def show_menu():
+            nonlocal menu_visible
+            save_menu_area(MENU_Y)
             draw_menu(VIEWER_MENU, menu_y=MENU_Y)
+            menu_visible = True
 
         def do_search():
+            nonlocal menu_visible
+            menu_visible = False
             term = show_input_bar(label="Find:", menu_y=MENU_Y)
-            fillrect(0, 0, 0, 320, MENU_Y,
+            fillrect(0, 0, 0, 320, 240,
                      theme.colors['bg'], theme.colors['bg'])
             if term:
                 viewer.search(term)
             else:
                 viewer.render()
-            draw_menu(VIEWER_MENU, menu_y=MENU_Y)
+            draw_notch()
+            _draw_progress(viewer)
 
         def open_bookmark_mgr():
-            nonlocal marks
+            nonlocal marks, menu_visible
+            menu_visible = False
             labels = ["Position " + str(p) for p in marks]
             while True:
                 result = show_list_manager(
@@ -139,31 +178,121 @@ def main():
                         labels = ["Position " + str(p) for p in marks]
             redraw()
 
+        def open_toc():
+            nonlocal menu_visible
+            menu_visible = False
+            headers = viewer.get_headers()
+            if not headers:
+                redraw()
+                return
+            labels = []
+            for level, title, _ in headers:
+                prefix = '  ' * (level - 1)
+                labels.append(prefix + title)
+            result = show_list_manager(
+                title="Table of Contents",
+                subtitle=filename,
+                items=labels,
+                empty_lines=["No headers found."],
+                hint="Enter=Jump  ESC=Close",
+                allow_delete=False,
+                menu_y=MENU_Y,
+            )
+            if result is not None and result.startswith('select:'):
+                idx = int(result[7:])
+                if idx < len(headers):
+                    _, _, line_idx = headers[idx]
+                    viewer.scroll_to_line(line_idx)
+                    draw_notch()
+                    _draw_progress(viewer)
+                    return
+            redraw()
+
+        def open_stats():
+            nonlocal menu_visible
+            menu_visible = False
+            lines, words, mins = viewer.get_document_stats()
+            show_stats_dialog(filename, lines, words, mins, MENU_Y)
+            redraw()
+
+        def navigate_link(url):
+            """Open a .md link, pushing current file onto the back-stack."""
+            nonlocal filename, marks, viewer
+            if not url.endswith('.md'):
+                return False
+            nav_stack.append((filename, viewer.get_scroll_position()))
+            filename = url
+            viewer = MarkdownViewer(GR_AFF, height=VIEWER_HEIGHT_FULL)
+            viewer.load_markdown_file(filename)
+            marks = bookmarks.load(filename)
+            viewer.set_bookmarks(marks)
+            redraw()
+            return True
+
+        def navigate_back():
+            """Pop the back-stack, returning to the previous file."""
+            nonlocal filename, marks, viewer
+            if not nav_stack:
+                return False
+            prev_file, prev_scroll = nav_stack.pop()
+            filename = prev_file
+            viewer = MarkdownViewer(GR_AFF, height=VIEWER_HEIGHT_FULL)
+            viewer.load_markdown_file(filename)
+            viewer.set_scroll_position(prev_scroll)
+            marks = bookmarks.load(filename)
+            viewer.set_bookmarks(marks)
+            redraw()
+            return True
+
         try:
             while True:
                 key = get_key()
                 if key > 0:
+                    if menu_visible:
+                        hide_menu()
                     if key == KEY_ESC:
-                        break
+                        if not navigate_back():
+                            break
+                        continue
                     elif key == KEY_UP:
                         viewer.scroll_up()
+                        draw_notch()
+                        _draw_progress(viewer)
                     elif key == KEY_DOWN:
                         viewer.scroll_down()
+                        draw_notch()
+                        _draw_progress(viewer)
                     elif key == KEY_PLUS:
                         viewer.scroll_page_down()
+                        draw_notch()
+                        _draw_progress(viewer)
                     elif key == KEY_MINUS:
                         viewer.scroll_page_up()
+                        draw_notch()
+                        _draw_progress(viewer)
                     elif key == KEY_BACKSPACE:
                         viewer.scroll_to_top()
+                        draw_notch()
+                        _draw_progress(viewer)
                     elif key == KEY_LOG:
                         viewer.scroll_to_bottom()
+                        draw_notch()
+                        _draw_progress(viewer)
                     elif key == KEY_F1:
                         do_search()
                     elif key == KEY_F2:
                         viewer.search_next()
+                        draw_notch()
+                        _draw_progress(viewer)
+                    elif key == KEY_F3:
+                        open_toc()
+                    elif key == KEY_F4:
+                        open_toc()
+                    elif key == KEY_F5:
+                        open_stats()
                     elif key == KEY_F6:
-                        viewer.toggle_theme()
-                        draw_menu(VIEWER_MENU, menu_y=MENU_Y)
+                        theme.toggle()
+                        redraw()
 
                 tx, ty = get_touch()
                 if tx >= 0 and ty >= 0:
@@ -177,6 +306,7 @@ def main():
                     else:
                         moved_lp = abs(tx - tap_x) + abs(ty - tap_y)
                         if (not long_press_fired and
+                                not menu_visible and
                                 moved_lp < DRAG_THRESHOLD * 3 and
                                 tap_y < MENU_Y):
                             elapsed = get_ticks() - touch_start_time
@@ -184,7 +314,7 @@ def main():
                                 long_press_fired = True
                                 choice = show_context_menu(
                                     tap_x, tap_y, ["Add Bookmark"],
-                                    content_bottom=MENU_Y)
+                                    content_bottom=240)
                                 if choice == 0:
                                     pos = viewer.get_scroll_position()
                                     marks = bookmarks.add(filename, pos)
@@ -193,11 +323,13 @@ def main():
                                 touch_down = False
                                 drag_last_y = -1
                         else:
-                            if ty < MENU_Y and drag_last_y >= 0:
+                            if not menu_visible and ty < MENU_Y and drag_last_y >= 0:
                                 delta = drag_last_y - ty
                                 if abs(delta) >= DRAG_THRESHOLD:
                                     viewer.scroll_by(delta)
                                     viewer.render()
+                                    draw_notch()
+                                    _draw_progress(viewer)
                                     drag_last_y = ty
                 else:
                     if touch_down:
@@ -205,16 +337,34 @@ def main():
                         if not long_press_fired:
                             moved = abs(tap_y - drag_last_y) if drag_last_y >= 0 else 0
                             if moved < DRAG_THRESHOLD * 2:
-                                slot = get_menu_tap(tap_x, tap_y, MENU_Y)
-                                if slot == 0:
-                                    do_search()
-                                elif slot == 1:
-                                    viewer.search_next()
-                                elif slot == 2:
-                                    open_bookmark_mgr()
-                                elif slot == 5:
-                                    viewer.toggle_theme()
-                                    draw_menu(VIEWER_MENU, menu_y=MENU_Y)
+                                if menu_visible:
+                                    slot = get_menu_tap(tap_x, tap_y, MENU_Y)
+                                    if slot >= 0:
+                                        if slot == 0:
+                                            do_search()
+                                        elif slot == 1:
+                                            viewer.search_next()
+                                            hide_menu()
+                                            _draw_progress(viewer)
+                                        elif slot == 2:
+                                            open_bookmark_mgr()
+                                        elif slot == 3:
+                                            open_toc()
+                                        elif slot == 4:
+                                            open_stats()
+                                        elif slot == 5:
+                                            theme.toggle()
+                                            menu_visible = False
+                                            redraw()
+                                    else:
+                                        hide_menu()
+                                elif is_notch_tap(tap_x, tap_y):
+                                    show_menu()
+                                else:
+                                    # Check for link tap
+                                    url = viewer.get_link_at(tap_x, tap_y)
+                                    if url:
+                                        navigate_link(url)
                         drag_last_y = -1
         except KeyboardInterrupt:
             action = 'exit'

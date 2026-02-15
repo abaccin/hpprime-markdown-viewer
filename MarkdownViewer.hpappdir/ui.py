@@ -12,8 +12,9 @@ show_list_manager: bg, header, italic, normal, table_border,
                    browser_sel, browser_sel_text, bookmark_mark (optional)
 """
 
-from constants import (GR_AFF, FONT_10, FONT_14)
-from hpprime import fillrect
+from constants import (GR_AFF, FONT_10, FONT_12, FONT_14,
+    NOTCH_X, NOTCH_Y, NOTCH_W, NOTCH_H, GR_MENU_SAVE, MENU_HEIGHT)
+from hpprime import fillrect, strblit2, dimgrob
 from graphics import draw_text, draw_rectangle, text_width
 from keycodes import KEY_ENTER, KEY_ESC, KEY_BACKSPACE, KEY_UP, KEY_DOWN
 from input_helpers import get_key, get_touch
@@ -58,6 +59,55 @@ def draw_menu(labels, menu_y=220, menu_h=20, colors=None):
             tw = text_width(label, FONT_10)
             tx = x1 + (x2 - x1 - tw) // 2
             draw_text(GR_AFF, tx, menu_y + 5, label, FONT_10, c['menu_text'])
+
+
+# ---------------------------------------------------------------------------
+# Menu notch (bottom-right trigger tab) & overlay helpers
+# ---------------------------------------------------------------------------
+
+def draw_notch(colors=None):
+    """Draw a small menu-trigger tab at the bottom-right corner.
+
+    The notch is a small rectangle with a hamburger icon (three lines)
+    that hints the user can tap to reveal the menu bar.
+    """
+    c = _c(colors)
+    bg = c['menu_bg']
+    fg = c['menu_text']
+    fillrect(GR_AFF, NOTCH_X, NOTCH_Y, NOTCH_W, NOTCH_H, bg, bg)
+    # Three horizontal lines (hamburger icon)
+    for i in range(3):
+        ly = NOTCH_Y + 3 + i * 3
+        fillrect(GR_AFF, NOTCH_X + 12, ly, 14, 1, fg, fg)
+
+
+def is_notch_tap(tx, ty):
+    """Return True if (tx, ty) is within the notch hit area.
+
+    The hit area is slightly larger than the visual notch for easier tapping.
+    """
+    return (tx >= NOTCH_X - 4 and tx < NOTCH_X + NOTCH_W + 4
+            and ty >= NOTCH_Y - 4 and ty < NOTCH_Y + NOTCH_H + 4)
+
+
+def save_menu_area(menu_y=220, menu_h=20):
+    """Save the screen area where the menu will be drawn to GR_MENU_SAVE.
+
+    Uses strblit2 to copy pixels from the display buffer to an off-screen
+    GROB so they can be restored later when the menu is dismissed.
+    """
+    dimgrob(GR_MENU_SAVE, 320, menu_h, 0)
+    strblit2(GR_MENU_SAVE, 0, 0, 320, menu_h,
+             GR_AFF, 0, menu_y, 320, menu_h)
+
+
+def restore_menu_area(menu_y=220, menu_h=20):
+    """Restore the saved screen area, hiding the menu overlay.
+
+    Uses strblit2 to copy the previously saved pixels back to the display.
+    """
+    strblit2(GR_AFF, 0, menu_y, 320, menu_h,
+             GR_MENU_SAVE, 0, 0, 320, menu_h)
 
 
 # ---------------------------------------------------------------------------
@@ -363,3 +413,86 @@ def show_list_manager(title, subtitle, items, empty_lines=None,
                     else:
                         selected = idx
                         draw_mgr()
+
+
+# ---------------------------------------------------------------------------
+# Document stats dialog
+# ---------------------------------------------------------------------------
+
+def show_stats_dialog(filename, line_count, word_count, read_min,
+                      menu_y=220, colors=None):
+    """Show a modal dialog with document statistics.
+
+    Args:
+        filename:   document filename.
+        line_count: number of lines in the document.
+        word_count: number of words.
+        read_min:   estimated reading time in minutes.
+        menu_y:     Y position of menu bar (dialog appears above).
+        colors:     color dict.
+
+    Blocks until the user presses ESC / Enter or taps outside the dialog.
+    """
+    c = _c(colors)
+    # Dialog dimensions
+    dw = 220
+    dh = 110
+    dx = (320 - dw) // 2
+    dy = (menu_y - dh) // 2
+    if dy < 10:
+        dy = 10
+
+    # Border + background
+    draw_rectangle(GR_AFF, dx - 1, dy - 1, dx + dw + 1, dy + dh + 1,
+                   c['ctx_border'], 255, c['ctx_border'], 255)
+    draw_rectangle(GR_AFF, dx, dy, dx + dw, dy + dh,
+                   c['ctx_bg'], 255, c['ctx_bg'], 255)
+
+    # Title
+    title = "Document Info"
+    tw = text_width(title, FONT_14)
+    draw_text(GR_AFF, dx + (dw - tw) // 2, dy + 6, title, FONT_14,
+              c['ctx_text'])
+
+    # Separator
+    draw_rectangle(GR_AFF, dx + 10, dy + 26, dx + dw - 10, dy + 27,
+                   c['ctx_border'], 255, c['ctx_border'], 255)
+
+    # Stats
+    col1_x = dx + 15
+    col2_x = dx + 120
+    row_y = dy + 34
+    row_h = 16
+    labels = ["File:", "Lines:", "Words:", "Read time:"]
+    values = [
+        filename if len(filename) <= 16 else filename[:14] + '..',
+        str(line_count),
+        str(word_count),
+        str(read_min) + " min" if read_min > 0 else "< 1 min",
+    ]
+    for i in range(len(labels)):
+        y = row_y + i * row_h
+        draw_text(GR_AFF, col1_x, y, labels[i], FONT_10, c['ctx_text'])
+        draw_text(GR_AFF, col2_x, y, values[i], FONT_10, c['ctx_text'])
+
+    # Hint
+    hint = "Press ESC or Enter to close"
+    hw = text_width(hint, FONT_10)
+    draw_text(GR_AFF, dx + (dw - hw) // 2, dy + dh - 16, hint, FONT_10,
+              c['ctx_border'])
+
+    # Wait for dismiss
+    while True:
+        tx, ty = get_touch()
+        if tx < 0:
+            break
+    touch_down = False
+    while True:
+        k = get_key()
+        if k == KEY_ESC or k == KEY_ENTER:
+            return
+        tx, ty = get_touch()
+        if tx >= 0 and ty >= 0:
+            touch_down = True
+        elif touch_down:
+            return

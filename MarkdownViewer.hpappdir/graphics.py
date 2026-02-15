@@ -1,54 +1,38 @@
 from hpprime import eval, fillrect, dimgrob
 
-def color_to_rgb(color):
-    """Extract R, G, B components from a 24-bit hex color."""
-    r = (color >> 16) & 0xFF
-    g = (color >> 8) & 0xFF
-    b = color & 0xFF
-    return r, g, b
-
 
 def draw_rectangle(gr, x1, y1, x2, y2, edge_color, edge_alpha,
               fill_color=0x0, fill_alpha=255):
     """Draw a rectangle with edge and fill colors."""
-    w = x2 - x1
-    h = y2 - y1
-    fillrect(gr, x1, y1, w, h, edge_color, fill_color)
+    fillrect(gr, x1, y1, x2 - x1, y2 - y1, edge_color, fill_color)
 
 
 def _escape_text(text):
     """Escape special characters for use in PPL eval strings."""
-    text = str(text)
-    text = text.replace('\\', '\\\\')
-    text = text.replace('"', '\\"')
-    return text
+    return str(text).replace('\\', '\\\\').replace('"', '\\"')
 
 
 def draw_text(gr, x, y, text, fontsize, text_color, width=320, bg_color=None):
     """Draw text at (x, y). If bg_color is None, no background is drawn."""
-    r1, g1, b1 = color_to_rgb(text_color)
     safe = _escape_text(text)
-    cmd = ('TEXTOUT_P("' + safe + '",G' + str(gr)
-           + "," + str(x) + "," + str(y)
-           + "," + str(fontsize)
-           + ",RGB(" + str(r1) + "," + str(g1) + "," + str(b1) + ")"
-           + "," + str(width))
+    r = (text_color >> 16) & 0xFF
+    g = (text_color >> 8) & 0xFF
+    b = text_color & 0xFF
     if bg_color is not None:
-        r2, g2, b2 = color_to_rgb(bg_color)
-        cmd += ",RGB(" + str(r2) + "," + str(g2) + "," + str(b2) + ")"
-    cmd += ")"
-    eval(cmd)
-
-
-def get_mouse():
-    """Get the current mouse/touch state."""
-    return eval("mouse")
+        r2 = (bg_color >> 16) & 0xFF
+        g2 = (bg_color >> 8) & 0xFF
+        b2 = bg_color & 0xFF
+        eval('TEXTOUT_P("%s",G%d,%d,%d,%d,RGB(%d,%d,%d),%d,RGB(%d,%d,%d))'
+             % (safe, gr, x, y, fontsize, r, g, b, width, r2, g2, b2))
+    else:
+        eval('TEXTOUT_P("%s",G%d,%d,%d,%d,RGB(%d,%d,%d),%d)'
+             % (safe, gr, x, y, fontsize, r, g, b, width))
 
 
 def text_width(text, fontsize):
     """Get the pixel width of text at the given font size."""
     safe = _escape_text(text)
-    result = eval('TEXTSIZE("' + safe + '",' + str(fontsize) + ')')
+    result = eval('TEXTSIZE("%s",%d)' % (safe, fontsize))
     if type(result) is list:
         return result[0]
     return result
@@ -112,11 +96,9 @@ def open_file(gr, name, app_name=""):
     app_name: app name for cross-app file access (optional)
     """
     if app_name == "":
-        eval('G' + str(gr) + ':=AFiles("' + str(name) + '")')
+        eval('G%d:=AFiles("%s")' % (gr, name))
     else:
-        cmd = ('G' + str(gr) + ':=EXPR(REPLACE("' + str(app_name)
-               + '"," ","_")+".AFiles(""' + str(name) + '"")")')
-        eval(cmd)
+        eval('G%d:=EXPR(REPLACE("%s"," ","_")+".AFiles(""%s"")")' % (gr, app_name, name))
 
 
 def blit(gr, dx1, dy1, dx2, dy2, src_gr, sx1, sy1, sx2, sy2,
@@ -146,10 +128,8 @@ def get_grob_size(gr):
     Returns (width, height) or None on failure.
     """
     try:
-        result = eval('GROBW_P(G' + str(gr) + ')')
-        w = int(result) if result else 0
-        result = eval('GROBH_P(G' + str(gr) + ')')
-        h = int(result) if result else 0
+        w = int(eval('GROBW_P(G%d)' % gr) or 0)
+        h = int(eval('GROBH_P(G%d)' % gr) or 0)
         if w > 0 and h > 0:
             return (w, h)
     except:
