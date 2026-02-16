@@ -122,6 +122,136 @@ def blit(gr, dx1, dy1, dx2, dy2, src_gr, sx1, sy1, sx2, sy2,
     eval(cmd)
 
 
+def _parse_func_args(s):
+    """Split comma-separated args respecting parentheses."""
+    args = []
+    depth = 0
+    start = 0
+    for i in range(len(s)):
+        c = s[i]
+        if c == '(':
+            depth += 1
+        elif c == ')':
+            depth -= 1
+        elif c == ',' and depth == 0:
+            args.append(s[start:i].strip())
+            start = i + 1
+    args.append(s[start:].strip())
+    return args
+
+
+def _math_subs(s):
+    """Apply Unicode math symbol substitutions."""
+    s = s.replace('infinity', '\u221e')
+    s = s.replace('inf', '\u221e')
+    s = s.replace('pi', '\u03c0')
+    s = s.replace('sqrt(', '\u221a(')
+    s = s.replace('^2', '\u00b2')
+    s = s.replace('^3', '\u00b3')
+    s = s.replace('*', '\u00b7')
+    return s
+
+
+def _try_func(s):
+    """Try to transform known CAS function patterns."""
+    sl = s.lower()
+
+    if sl.startswith('integrate(') and s.endswith(')'):
+        args = _parse_func_args(s[10:-1])
+        if len(args) >= 2:
+            f = _math_subs(args[0])
+            v = args[1]
+            if len(args) == 4:
+                a = _math_subs(args[2])
+                b = _math_subs(args[3])
+                return '\u222b[%s,%s] %s d%s' % (a, b, f, v)
+            return '\u222b %s d%s' % (f, v)
+
+    if sl.startswith('sum(') and s.endswith(')'):
+        args = _parse_func_args(s[4:-1])
+        if len(args) >= 4:
+            f = _math_subs(args[0])
+            v = args[1]
+            a = _math_subs(args[2])
+            b = _math_subs(args[3])
+            return '\u03a3(%s=%s..%s) %s' % (v, a, b, f)
+        if len(args) >= 1:
+            return '\u03a3 ' + _math_subs(args[0])
+
+    if sl.startswith('diff(') and s.endswith(')'):
+        args = _parse_func_args(s[5:-1])
+        if len(args) >= 2:
+            f = _math_subs(args[0])
+            v = args[1]
+            return 'd/d%s(%s)' % (v, f)
+
+    if sl.startswith('limit(') and s.endswith(')'):
+        args = _parse_func_args(s[6:-1])
+        if len(args) >= 3:
+            f = _math_subs(args[0])
+            v = args[1]
+            a = _math_subs(args[2])
+            return 'lim(%s\u2192%s) %s' % (v, a, f)
+
+    return None
+
+
+def format_math(expr):
+    """Transform a CAS expression into readable math text."""
+    s = expr.strip()
+    result = _try_func(s)
+    if result is not None:
+        return result
+    return _math_subs(s)
+
+
+FORMULA_FONT = 2  # FONT_12
+
+
+def get_formula_size(expr):
+    """Get pixel dimensions for a formatted formula."""
+    display = format_math(expr)
+    safe = _escape_text(display)
+    try:
+        result = eval('TEXTSIZE("%s",%d)' % (safe, FORMULA_FONT))
+        if type(result) is list and len(result) >= 2:
+            return (int(result[0]), int(result[1]))
+    except:
+        pass
+    return None
+
+
+def _rgb_str(color):
+    """Convert 0xRRGGBB integer to 'RGB(r,g,b)' PPL string."""
+    return "RGB(%d,%d,%d)" % (
+        (color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF)
+
+
+def render_formula(gr, dest_x, dest_y, expr, expr_w, expr_h,
+                   border_color, text_color):
+    """Render a formula as formatted text in a bordered box."""
+    display = format_math(expr)
+    safe = _escape_text(display)
+    pad = 6
+    gw = expr_w + pad * 2
+    gh = expr_h + pad * 2
+    bc = _rgb_str(border_color)
+    tc = _rgb_str(text_color)
+
+    x1 = dest_x
+    y1 = dest_y
+    x2 = x1 + gw + 1
+    y2 = y1 + gh + 1
+
+    # Draw bordered white box
+    eval("RECT_P(G%d,%d,%d,%d,%d,%s,RGB(255,255,255))" %
+         (gr, x1, y1, x2, y2, bc))
+
+    # Draw formatted text
+    eval('TEXTOUT_P("%s",G%d,%d,%d,%d,%s,%d)' %
+         (safe, gr, x1 + pad, y1 + pad, FORMULA_FONT, tc, gw))
+
+
 def get_grob_size(gr):
     """Get the width and height of a graphics buffer.
 

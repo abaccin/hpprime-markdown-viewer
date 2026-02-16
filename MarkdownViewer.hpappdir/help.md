@@ -137,6 +137,27 @@ viewer.load_markdown_file("help.md")
 viewer.render()
 ```
 
+### Math Formulas
+
+Use a fenced code block tagged with `math`, `formula`,
+or `cas` to render CAS expressions in pretty-print:
+
+```math
+integrate(sin(x)^2,x)
+```
+
+```math
+sum(1/n^2,n,1,infinity)
+```
+
+Each line inside a math block becomes a separate
+formatted formula, centered with a bordered frame.
+Formula dimensions are cached for fast scrolling.
+
+Supported CAS functions include `integrate`, `sum`,
+`diff`, `limit`, `sqrt`, `matrix`, and any valid
+HP Prime CAS expression.
+
 ## Search
 
 Tap **Find** in the menu bar to search for text.

@@ -16,7 +16,7 @@ Read beautifully formatted Markdown documents right on your calculator's 320×24
 - **Task lists** — `- [x]` and `- [ ]` checkboxes
 - **Horizontal rules** (`---`, `***`, `___`)
 - **Tables** with header styling and alternating row colors (warns if too wide)
-- **Embedded images** via base64-encoded raw pixel data or **image files** (PNG, etc.)
+- **Embedded images** via base64-encoded raw pixel data or **image files** (PNG, etc.)\n- **Math formula rendering** — fenced code blocks tagged `math`, `formula`, or `cas` render CAS expressions in pretty-print via the HP Prime CAS engine
 - **Word wrapping** that fits the 320px-wide screen
 - **Smooth scrolling** with Up/Down keys or **touch drag**
 - **Scroll position indicator** — thin scrollbar on the right edge
@@ -33,12 +33,9 @@ Read beautifully formatted Markdown documents right on your calculator's 320×24
 - **Bookmark manager** — tap Marks to view, jump to, or delete bookmarks
 - **Auto-save** — last opened file and scroll position remembered
 
-## Screenshots
+## Demo
 
-![Screenshot 1](Screenshot_1.png)
-![Screenshot 2](Screenshot_2.png)
-![Screenshot 3](Screenshot_3.png)
-![Screenshot 3](Screenshot_4.png)
+<video src="md_demo.mp4" controls width="320"></video>
 
 ## Getting Started
 

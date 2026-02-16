@@ -8,6 +8,7 @@ from hpprime import eval as heval
 
 def get_key():
     """Read the current key code, or 0 if none pressed."""
+    heval('wait(0.05)')
     k = heval('GETKEY()')
     return k if k > 0 else 0
 

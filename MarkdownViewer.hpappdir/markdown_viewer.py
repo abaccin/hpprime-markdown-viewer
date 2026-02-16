@@ -1,5 +1,5 @@
 from graphics import (draw_text, draw_rectangle, text_width, draw_image,
-    open_file, blit, get_grob_size)
+    open_file, blit, get_grob_size, get_formula_size, render_formula)
 from constants import (FONT_10, FONT_12, FONT_14,
     TABLE_MAX_COLS, TABLE_CELL_PAD, GR_TMP, TRANSPARENCY,
     SCROLLBAR_WIDTH, SCROLLBAR_MIN_THUMB, BLOCKQUOTE_INDENT,
@@ -244,6 +244,9 @@ class MarkdownRenderer:
         self._link_zones = []  # [(x1, y1, x2, y2, url)] for tap detection
         self._line_y_cache = []     # abs Y offset per source line
         self._line_fence_cache = [] # code-fence state per source line
+        self._in_math_fence = False
+        self._math_buffer = []
+        self._formula_cache = {}    # expr -> (width, height)
 
     def _in_view(self, y, h=12):
         """Check if a line at y with height h is within the visible area."""
@@ -288,6 +291,8 @@ class MarkdownRenderer:
         self.current_y = self.y - self.scroll_offset
         self._table_buffer = []
         self._in_code_fence = False
+        self._in_math_fence = False
+        self._math_buffer = []
         self._blockquote_depth = 0
         self._link_zones = []
 
@@ -306,7 +311,13 @@ class MarkdownRenderer:
             for line in lines:
                 cache_y.append(
                     self.current_y + self.scroll_offset - self.y)
-                cache_f.append(self._in_code_fence)
+                # Fence state: 0=none, 1=code, 2=math
+                if self._in_math_fence:
+                    cache_f.append(2)
+                elif self._in_code_fence:
+                    cache_f.append(1)
+                else:
+                    cache_f.append(0)
                 self._render_line(line)
             if self._table_buffer:
                 self._flush_table()
@@ -321,9 +332,17 @@ class MarkdownRenderer:
             while (start_idx > 0
                     and lines[start_idx - 1].strip().startswith('|')):
                 start_idx -= 1
+            # Back up into any math fence block that straddles the edge
+            if (start_idx < n
+                    and self._line_fence_cache[start_idx] == 2):
+                while (start_idx > 0
+                        and self._line_fence_cache[start_idx] == 2):
+                    start_idx -= 1
             # Restore rendering state from cache
             if start_idx > 0:
-                self._in_code_fence = self._line_fence_cache[start_idx]
+                state = self._line_fence_cache[start_idx]
+                self._in_code_fence = (state == 1)
+                self._in_math_fence = (state == 2)
                 self.current_y = (
                     self.y + self._line_y_cache[start_idx]
                     - self.scroll_offset)
@@ -348,9 +367,27 @@ class MarkdownRenderer:
         """Render a single line of markdown."""
         line = line.rstrip()
 
-        # Handle code fences
+        # Handle code/math fences
         if line.strip().startswith('```'):
-            self._in_code_fence = not self._in_code_fence
+            if self._in_math_fence:
+                self._in_math_fence = False
+                self._flush_math()
+                return
+            elif self._in_code_fence:
+                self._in_code_fence = False
+                return
+            else:
+                tag = line.strip()[3:].strip().lower()
+                if tag in ('math', 'formula', 'cas'):
+                    self._in_math_fence = True
+                    self._math_buffer = []
+                    return
+                else:
+                    self._in_code_fence = True
+                    return
+
+        if self._in_math_fence:
+            self._math_buffer.append(line)
             return
 
         if self._in_code_fence:
@@ -422,6 +459,48 @@ class MarkdownRenderer:
                           line, FONT_10, theme.colors['code'],
                           self.width - 4, bg_color=code_bg)
         self.current_y += self.line_height
+
+    def _flush_math(self):
+        """Render collected math fence lines as pretty-printed formulas."""
+        for line in self._math_buffer:
+            expr = line.strip()
+            if expr:
+                self._render_formula(expr)
+        self._math_buffer = []
+
+    def _render_formula(self, expr):
+        """Render a CAS expression as a formatted formula."""
+        # Get cached dimensions or measure
+        if expr in self._formula_cache:
+            size = self._formula_cache[expr]
+        else:
+            size = get_formula_size(expr)
+            if size is None:
+                fw = min(text_width(expr, FONT_10) + 20,
+                         self.width - 20)
+                size = (fw, 14)
+            self._formula_cache[expr] = size
+
+        fw, fh = size
+        pad = 6
+        total_w = fw + pad * 2 + 2
+        total_h = fh + pad * 2 + 2
+
+        # Clamp width to available area
+        if total_w > self.width:
+            total_w = self.width
+
+        # Center horizontally
+        fx = self.x + (self.width - total_w) // 2
+
+        c = theme.colors
+        if self._in_view(self.current_y, total_h):
+            render_formula(self.gr, fx, self.current_y,
+                           expr, fw, fh,
+                           c.get('formula_border', c['table_border']),
+                           c['normal'])
+
+        self.current_y += total_h + 4
 
     def _is_ordered_list(self, line):
         """Check if line starts with a number followed by '. '."""
