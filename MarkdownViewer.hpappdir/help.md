@@ -9,6 +9,18 @@ No PC required. See also: [Link Demo](demo.md)
 
 ![Navigation](Navigation_1.png)
 
+### File Browser
+
+- Tap a **column header** to sort by that column
+- Tap the **\u2605** star on a row to pin/unpin it
+- Tap **Recent** to see recently opened files
+- Tap **Theme** to switch light/dark theme
+- Press **Up/Down** to navigate the file list
+- Press **Enter** or tap a file to open it
+- Press **ESC** or **ON** to exit
+
+### Document Viewer
+
 - Press **Up/Down** to scroll line by line
 - Press **+/-** to scroll page by page
 - Press **Backspace** to jump to start
@@ -18,6 +30,54 @@ No PC required. See also: [Link Demo](demo.md)
 - Press **ON** to exit
 
 ## Features
+
+### File Browser Enhancements
+
+#### Favorites / Pinned Files
+
+Tap the **\u2605** yellow star icon in the star column
+of any file row to pin or unpin it.
+
+Pinned files show a yellow **\u2605** star. When sorting
+by the star column, favorites appear at the top.
+Favorites persist across app restarts.
+
+#### Recently Opened Files
+
+Tap **Recent** in the menu bar (or press **F1**)
+to see a list of your last 10 opened files.
+Select one to open it directly.
+
+#### Column Sorting
+
+The browser has three sortable columns:
+
+- **\u2605** (Star) — sort favorites first
+- **Name** — sort alphabetically
+- **Size** — sort by file size
+
+Tap a column header to sort by it.
+Tap the same header again to reverse direction.
+The active column shows **\u25B2** (ascending)
+or **\u25BC** (descending).
+
+#### File Organization
+
+To organize many files, use the underscore naming
+convention: `folder_filename.md`. The browser shows
+these as `folder/filename.md` for visual grouping.
+Files with a common prefix naturally sort together.
+
+For example, the included `docs_lorem.md` appears
+as `docs/lorem.md` in the file list. You can create
+multiple "folders" this way:
+
+- `notes_math.md` → `notes/math.md`
+- `notes_physics.md` → `notes/physics.md`
+- `docs_setup.md` → `docs/setup.md`
+
+This is purely a display convention — all files
+remain in the same app directory on the calculator.
 
 ### Rich Text Rendering
 

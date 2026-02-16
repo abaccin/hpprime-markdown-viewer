@@ -37,6 +37,8 @@ LIGHT = {
     'ctx_text': 0x000000,
     'ctx_sel': 0x000080,
     'ctx_sel_text': 0xFFFFFF,
+    'fav_star': 0xCCA000,
+    'progress_bar': 0x4040C0,
 }
 
 DARK = {
@@ -76,6 +78,8 @@ DARK = {
     'ctx_text': 0xD4D4D4,
     'ctx_sel': 0x264F78,
     'ctx_sel_text': 0xFFFFFF,
+    'fav_star': 0xFFD700,
+    'progress_bar': 0x569CD6,
 }
 
 # Current active theme colors (mutable dict)

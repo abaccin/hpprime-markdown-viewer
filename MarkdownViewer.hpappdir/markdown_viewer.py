@@ -145,46 +145,33 @@ class MarkdownViewer:
     def scroll_to_line(self, line_index):
         """Scroll so that the given source line index is visible.
 
-        Does a temporary render pass to map source lines to pixel offsets.
+        Uses the cached per-line Y offsets for exact positioning.
+        Falls back to a measurement pass if the cache is not yet built.
         """
         if not self.document.renderer or not self.document.content:
             return
         r = self.document.renderer
-        # Save state
+
+        # Use cached offsets if available
+        if r._line_y_cache and line_index < len(r._line_y_cache):
+            r.scroll_offset = max(0, r._line_y_cache[line_index])
+            m = r._max_scroll()
+            if r.scroll_offset > m:
+                r.scroll_offset = m
+            self.document.render(self.gr, height=self.height)
+            return
+
+        # Cache not built yet — trigger a measurement pass
         saved_scroll = r.scroll_offset
-        saved_height = r._content_height
         r.scroll_offset = 0
         r._content_height = 0
-        # Walk lines to compute pixel offset
-        lines = self.document.content.split('\n')
-        pixel_y = r.y
-        target_y = 0
-        in_fence = False
-        for idx, line in enumerate(lines):
-            if idx == line_index:
-                target_y = pixel_y - r.y
-                break
-            stripped = line.strip()
-            if stripped.startswith('```'):
-                in_fence = not in_fence
-                continue
-            if in_fence or not stripped:
-                pixel_y += r.line_height if stripped or in_fence else r.line_height // 2
-            elif stripped.startswith('#'):
-                lv = 0
-                while lv < len(stripped) and stripped[lv] == '#':
-                    lv += 1
-                if lv == 1:
-                    pixel_y += r.line_height + 3 * 4 + 3 + 3
-                elif lv == 2:
-                    pixel_y += r.line_height + 2 * 4 + 3 + 2
-                else:
-                    pixel_y += r.line_height + 1 * 4 + 3
-            else:
-                pixel_y += r.line_height
-        # Restore content height if known
-        r._content_height = saved_height
-        r.scroll_offset = max(0, target_y)
+        self.document.render(self.gr, height=self.height)
+
+        # Now use the freshly built cache
+        if r._line_y_cache and line_index < len(r._line_y_cache):
+            r.scroll_offset = max(0, r._line_y_cache[line_index])
+        else:
+            r.scroll_offset = saved_scroll
         m = r._max_scroll()
         if r.scroll_offset > m:
             r.scroll_offset = m
@@ -255,10 +242,32 @@ class MarkdownRenderer:
         self._search_match_idx = 0
         self._bookmarks = []
         self._link_zones = []  # [(x1, y1, x2, y2, url)] for tap detection
+        self._line_y_cache = []     # abs Y offset per source line
+        self._line_fence_cache = [] # code-fence state per source line
 
     def _in_view(self, y, h=12):
         """Check if a line at y with height h is within the visible area."""
         return y >= self.y and y + h <= self.y + self.height
+
+    def _find_first_visible(self):
+        """Binary search for the first source line that could be visible.
+
+        Returns the index into _line_y_cache of the first line whose
+        absolute Y is within a margin above the current scroll offset.
+        """
+        target = self.scroll_offset - 50
+        if target <= 0:
+            return 0
+        cache = self._line_y_cache
+        lo = 0
+        hi = len(cache) - 1
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if cache[mid] < target:
+                lo = mid + 1
+            else:
+                hi = mid
+        return lo
 
     def clear(self):
         """Clear the rendering area."""
@@ -269,27 +278,69 @@ class MarkdownRenderer:
         self.current_y = self.y
 
     def render(self, markdown_text):
-        """Render markdown text to the graphics buffer."""
+        """Render markdown text to the graphics buffer.
+
+        First render (content_height==0) does a full measurement pass,
+        building a per-line Y-offset cache.  Subsequent renders use
+        the cache to skip lines above the viewport (partial render).
+        """
         self.clear()
         self.current_y = self.y - self.scroll_offset
         self._table_buffer = []
         self._in_code_fence = False
         self._blockquote_depth = 0
         self._link_zones = []
-        if self._search_term:
-            self._search_positions = []
+
         lines = markdown_text.split('\n')
+        n = len(lines)
+        is_measuring = self._content_height == 0
 
-        for line in lines:
-            if self._content_height > 0 and self.current_y > self.y + self.height:
-                break
-            self._render_line(line)
+        # Only rebuild search positions during measurement pass
+        if self._search_term and is_measuring:
+            self._search_positions = []
 
-        if self._table_buffer:
-            self._flush_table()
-
-        if self._content_height == 0:
-            self._content_height = self.current_y + self.scroll_offset - self.y
+        if is_measuring:
+            # --- Full measurement pass: build cache ---
+            cache_y = []
+            cache_f = []
+            for line in lines:
+                cache_y.append(
+                    self.current_y + self.scroll_offset - self.y)
+                cache_f.append(self._in_code_fence)
+                self._render_line(line)
+            if self._table_buffer:
+                self._flush_table()
+            self._content_height = (
+                self.current_y + self.scroll_offset - self.y)
+            self._line_y_cache = cache_y
+            self._line_fence_cache = cache_f
+        elif self._line_y_cache and len(self._line_y_cache) == n:
+            # --- Cached partial render: skip above viewport ---
+            start_idx = self._find_first_visible()
+            # Back up into any table block that straddles the edge
+            while (start_idx > 0
+                    and lines[start_idx - 1].strip().startswith('|')):
+                start_idx -= 1
+            # Restore rendering state from cache
+            if start_idx > 0:
+                self._in_code_fence = self._line_fence_cache[start_idx]
+                self.current_y = (
+                    self.y + self._line_y_cache[start_idx]
+                    - self.scroll_offset)
+            for i in range(start_idx, n):
+                if self.current_y > self.y + self.height:
+                    break
+                self._render_line(lines[i])
+            if self._table_buffer:
+                self._flush_table()
+        else:
+            # --- Fallback: no cache, content_height known ---
+            for line in lines:
+                if self.current_y > self.y + self.height:
+                    break
+                self._render_line(line)
+            if self._table_buffer:
+                self._flush_table()
 
         self._draw_scrollbar()
 

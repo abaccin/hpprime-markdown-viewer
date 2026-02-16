@@ -21,6 +21,11 @@ Read beautifully formatted Markdown documents right on your calculator's 320×24
 - **Smooth scrolling** with Up/Down keys or **touch drag**
 - **Scroll position indicator** — thin scrollbar on the right edge
 - **Built-in file browser** to pick `.md` files from calculator storage
+- **Favorites / pinned files** — tap the yellow \u2605 star on any row to pin it; favorites sort to the top
+- **Recently opened files** — quick access to your last 10 opened files
+- **Sortable column headers** — tap \u2605, Name, or Size headers to sort; tap again to reverse
+- **File size display** — each file’s size is shown in its own column
+- **Folder-prefix display** — files named `prefix_name.md` display as `prefix/name.md` for visual organization
 - **Back navigation** — press ESC to return to file browser without exiting
 - **Search** — press F1 to find text, F2 for next match, with highlighting
 - **Light / Dark theme** — press F6 to toggle, works in browser and viewer
@@ -67,6 +72,9 @@ Place any `.md` files in the app's storage folder on the calculator. The built-i
 |---|---|
 | **Up / Down** | Navigate file list |
 | **Enter / Tap** | Open selected file |
+| **Tap column header** | Sort by \u2605, Name, or Size |
+| **Tap \u2605 star** | Pin / unpin a file |
+| **Recent** (F1) | Show recently opened files |
 | **Theme** (F6) | Toggle light / dark theme |
 | **ON** | Exit app |
 
@@ -112,7 +120,7 @@ Place any `.md` files in the app's storage folder on the calculator. The built-i
 ```
 MarkdownViewer.hpappdir/
 ├── main.py              # Entry point — viewer loop + app-specific logic
-├── browser.py           # Reusable file picker (configurable title, ext, menu)
+├── browser.py           # Column-based file picker with sortable headers
 ├── ui.py                # Reusable UI: menu bar, input bar, context menu, list manager
 ├── input_helpers.py     # Reusable keyboard and touch input helpers
 ├── markdown_viewer.py   # MarkdownViewer, MarkdownRenderer & MarkdownDocument classes
@@ -120,6 +128,7 @@ MarkdownViewer.hpappdir/
 ├── constants.py         # Colors, font sizes, layout constants
 ├── theme.py             # Light/dark theme palettes and toggle
 ├── bookmarks.py         # Multi-bookmark storage per file
+├── file_prefs.py        # Favorites, recent files, and sort preferences
 ├── file_ops.py          # File listing via HP Prime AFiles()
 ├── keycodes.py          # Key code constants for GETKEY
 ├── utils.py             # Misc helpers (color math, text measurement)
@@ -176,9 +185,11 @@ Contributions are welcome! Feel free to open issues or submit pull requests.
 
 Some ideas for future improvements:
 
-- Table of contents / jump-to-heading navigation
-- Horizontal scrolling for wide tables and code blocks
 - Syntax highlighting in code fences
+- Horizontal scrolling for wide tables and code blocks
+- Draggable scrollbar for fast navigation
+- Font size selector
+- Search result count and navigation
 
 ## License
 

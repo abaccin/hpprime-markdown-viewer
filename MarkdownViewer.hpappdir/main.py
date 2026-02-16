@@ -16,9 +16,10 @@ from graphics import draw_text, text_width
 from browser import file_picker
 import theme
 import bookmarks
+import file_prefs
 
 VIEWER_MENU = ["Find", "Next", "Marks", "TOC", "Info", "Theme"]
-BROWSER_MENU = ["", "", "", "", "", "Theme"]
+BROWSER_MENU = ["Recent", "", "", "", "", "Theme"]
 
 
 def save_last_file(filename, scroll_pos):
@@ -48,9 +49,34 @@ def clear_screen():
     fillrect(0, 0, 0, 320, 240, 0, 0)
 
 
-def _browser_menu_tap(slot):
-    """Handle menu taps in the file browser. Returns True if redraw needed."""
-    if slot == 5:
+def _browser_menu_tap(slot, selected_file):
+    """Handle menu taps in the file browser.
+
+    Returns:
+        True      — redraw the browser screen.
+        'reload'  — rebuild file list and redraw.
+        'open:f'  — open file f directly.
+        False     — no action.
+    """
+    if slot == 0:  # Recent
+        recent = file_prefs.get_recent()
+        if not recent:
+            return True
+        result = show_list_manager(
+            title="Recent Files",
+            subtitle="Last opened",
+            items=recent,
+            empty_lines=["No recent files."],
+            hint="Enter=Open  ESC=Close",
+            allow_delete=False,
+            menu_y=MENU_Y,
+        )
+        if result is not None and result.startswith('select:'):
+            idx = int(result[7:])
+            if idx < len(recent):
+                return 'open:' + recent[idx]
+        return True
+    elif slot == 5:  # Theme
         theme.toggle()
         return True
     return False
@@ -67,6 +93,14 @@ def _draw_progress(viewer):
     c = theme.colors
     fillrect(GR_AFF, px, py, pw, 13, c['menu_bg'], c['menu_bg'])
     draw_text(GR_AFF, px + 4, py + 2, label, FONT_10, c['menu_text'])
+    # Thin reading progress bar at the very top of the screen
+    bar_w = int(320 * pct / 100) if pct < 100 else 320
+    bar_c = c.get('progress_bar', c['header'])
+    bg = c['bg']
+    if bar_w > 0:
+        fillrect(GR_AFF, 0, 0, bar_w, 2, bar_c, bar_c)
+    if bar_w < 320:
+        fillrect(GR_AFF, bar_w, 0, 320 - bar_w, 2, bg, bg)
 
 
 def main():
@@ -86,6 +120,8 @@ def main():
         if filename is None:
             clear_screen()
             return
+
+        file_prefs.add_recent(filename)
 
         # Navigation back-stack: list of (filename, scroll_pos)
         nav_stack = []
