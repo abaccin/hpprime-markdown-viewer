@@ -1,0 +1,10 @@
+{
+  "servers": {
+    "hpprime-manual": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["${workspaceFolder}/manual-skill/server.py"],
+      "description": "HP Prime user guide — search, section lookup, and page retrieval"
+    }
+  }
+}

@@ -17,7 +17,7 @@ from constants import (GR_AFF, FONT_10, FONT_12, FONT_14,
 from hpprime import fillrect, strblit2, dimgrob
 from graphics import draw_text, draw_rectangle, text_width
 from keycodes import KEY_ENTER, KEY_ESC, KEY_BACKSPACE, KEY_UP, KEY_DOWN
-from input_helpers import get_key, get_touch
+from input_helpers import get_key, get_touch, mouse_clear
 
 
 def _c(colors):
@@ -271,11 +271,8 @@ def show_context_menu(x, y, items, content_bottom=220, colors=None):
         iy = py + padding + i * item_h
         draw_text(GR_AFF, px + padding, iy + 2, item, FONT_10, c['ctx_text'])
 
-    # Wait for current touch to end
-    while True:
-        tx, ty = get_touch()
-        if tx < 0:
-            break
+    # Drain pending touch events to prevent ghost taps
+    mouse_clear()
     # Wait for new tap
     touch_down = False
     tap_x = -1
@@ -489,11 +486,8 @@ def show_stats_dialog(filename, line_count, word_count, read_min,
     draw_text(GR_AFF, dx + (dw - hw) // 2, dy + dh - 16, hint, FONT_10,
               c['ctx_border'])
 
-    # Wait for dismiss
-    while True:
-        tx, ty = get_touch()
-        if tx < 0:
-            break
+    # Drain pending touch events before waiting for dismiss
+    mouse_clear()
     touch_down = False
     while True:
         k = get_key()

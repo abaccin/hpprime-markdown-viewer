@@ -9,7 +9,9 @@ Persistence:
     .progress   — filename:percent per line
 """
 
-MAX_RECENT = 10
+from micropython import const
+
+MAX_RECENT = const(10)
 
 _favorites = None
 _sort_col = 'fav'

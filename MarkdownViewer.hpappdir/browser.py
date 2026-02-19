@@ -8,6 +8,7 @@ The caller can customize the title, subtitle, file extension filter,
 menu labels, menu-tap handler, and color palette.
 """
 
+from micropython import const
 from constants import (GR_AFF, FONT_10, FONT_12, FONT_14)
 from hpprime import fillrect
 from graphics import draw_text, draw_rectangle, text_width
@@ -19,20 +20,20 @@ import file_prefs
 import math
 
 # Column layout (pixel positions)
-_COL_FAV_X = 7
-_COL_DIV1 = 27
-_COL_NAME_X = 30
-_COL_DIV2 = 255
-_COL_SIZE_X = 258
-_COL_RIGHT = 313
+_COL_FAV_X = const(7)
+_COL_DIV1 = const(27)
+_COL_NAME_X = const(30)
+_COL_DIV2 = const(255)
+_COL_SIZE_X = const(258)
+_COL_RIGHT = const(313)
 
 # Rows
-_HDR_Y = 38
-_HDR_H = 14
-_SEP_Y = 52
-_ITEM_Y0 = 54
-_ITEM_H = 20
-_MAX_VISIBLE = 8
+_HDR_Y = const(38)
+_HDR_H = const(14)
+_SEP_Y = const(52)
+_ITEM_Y0 = const(54)
+_ITEM_H = const(20)
+_MAX_VISIBLE = const(8)
 
 
 def _get_colors(colors):
@@ -71,53 +72,79 @@ def _format_size(size):
 def _draw_pie(cx, cy, r, pct, fg_color, bg_color, border_color):
     """Draw a tiny filled pie chart showing pct% progress.
 
-    Uses scanline rendering with fillrect for efficiency.
-    The pie fills clockwise from 12 o'clock.
+    Uses hpprime.circle for the outline and scanline integer-distance
+    checks for the interior fill — no sqrt, pixel-perfect alignment.
     """
-    # Threshold angle in radians (clockwise from 12 o'clock)
+    from hpprime import circle as _circle
+
+    if pct <= 0:
+        _circle(GR_AFF, cx, cy, r, border_color)
+        return
+
+    if pct >= 100:
+        # Fill entire interior then outline
+        r2 = r * r
+        for dy in range(-r + 1, r):
+            for dx in range(-r + 1, r):
+                if dx * dx + dy * dy < r2:
+                    pass  # will be covered by run below
+            # Scanline: find first and last interior pixel
+            x0 = None
+            x1 = None
+            for dx in range(-r + 1, r):
+                if dx * dx + dy * dy < r2:
+                    if x0 is None:
+                        x0 = dx
+                    x1 = dx
+            if x0 is not None:
+                fillrect(GR_AFF, cx + x0, cy + dy,
+                         x1 - x0 + 1, 1, fg_color, fg_color)
+        _circle(GR_AFF, cx, cy, r, border_color)
+        return
+
+    # Partial fill: threshold angle (clockwise from 12 o'clock)
     thresh = pct * 2 * math.pi / 100
     r2 = r * r
-    ri2 = (r - 1) * (r - 1)
-    for dy in range(-r, r + 1):
-        # Collect runs of same color across this scanline
-        run_start = None
-        run_color = None
-        for dx in range(-r, r + 1):
-            d2 = dx * dx + dy * dy
-            if d2 > r2:
-                c = None
-            elif d2 >= ri2:
-                # Border ring — but fill over it if in pie sector
+
+    for dy in range(-r + 1, r):
+        # Find interior span for this scanline
+        x0 = None
+        x1 = None
+        for dx in range(-r + 1, r):
+            if dx * dx + dy * dy < r2:
+                if x0 is None:
+                    x0 = dx
+                x1 = dx
+        if x0 is None:
+            continue
+
+        # Fill background across the full interior span
+        fillrect(GR_AFF, cx + x0, cy + dy,
+                 x1 - x0 + 1, 1, bg_color, bg_color)
+
+        # Now overlay foreground for pixels in the pie sector
+        fg_start = None
+        for dx in range(x0, x1 + 1):
+            if dx * dx + dy * dy < r2:
                 angle = math.atan2(dx, -dy)
                 if angle < 0:
                     angle += 2 * math.pi
-                if pct >= 100 or angle <= thresh:
-                    c = fg_color
+                if angle <= thresh:
+                    if fg_start is None:
+                        fg_start = dx
+                    fg_end = dx
                 else:
-                    c = border_color
-            else:
-                angle = math.atan2(dx, -dy)
-                if angle < 0:
-                    angle += 2 * math.pi
-                if pct >= 100 or angle <= thresh:
-                    c = fg_color
-                else:
-                    c = bg_color
-            # Flush run if color changed
-            if c != run_color:
-                if run_color is not None and run_start is not None:
-                    x1 = cx + run_start
-                    w = dx - run_start
-                    fillrect(GR_AFF, x1, cy + dy, w, 1,
-                             run_color, run_color)
-                run_start = dx
-                run_color = c
-        # Flush last run
-        if run_color is not None and run_start is not None:
-            x1 = cx + run_start
-            w = r + 1 - run_start
-            fillrect(GR_AFF, x1, cy + dy, w, 1,
-                     run_color, run_color)
+                    if fg_start is not None:
+                        fillrect(GR_AFF, cx + fg_start, cy + dy,
+                                 fg_end - fg_start + 1, 1,
+                                 fg_color, fg_color)
+                        fg_start = None
+        if fg_start is not None:
+            fillrect(GR_AFF, cx + fg_start, cy + dy,
+                     fg_end - fg_start + 1, 1,
+                     fg_color, fg_color)
+
+    _circle(GR_AFF, cx, cy, r, border_color)
 
 
 def _file_label(fname):

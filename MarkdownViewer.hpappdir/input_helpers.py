@@ -13,6 +13,13 @@ def get_key():
     return k if k > 0 else 0
 
 
+def get_key_fast():
+    """Read key with shorter wait — use during scrolling/drag for responsiveness."""
+    heval('wait(0.02)')
+    k = heval('GETKEY()')
+    return k if k > 0 else 0
+
+
 def get_touch_y():
     """Get the Y coordinate of the current touch, or -1 if not touching."""
     m = heval("mouse")
@@ -37,6 +44,12 @@ def get_touch():
         elif type(f) in (int, float) and len(m) >= 2 and m[0] >= 0:
             return (int(m[0]), int(m[1]))
     return (-1, -1)
+
+
+def mouse_clear():
+    """Drain all pending touch events to prevent ghost taps / bounce."""
+    while heval('mouse(1)') >= 0:
+        pass
 
 
 def get_ticks():

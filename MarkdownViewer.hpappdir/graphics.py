@@ -12,30 +12,63 @@ def _escape_text(text):
     return str(text).replace('\\', '\\\\').replace('"', '\\"')
 
 
+# Cache for RGB string decomposition: 0xRRGGBB -> "r,g,b"
+_rgb_cache = {}
+
+
 def draw_text(gr, x, y, text, fontsize, text_color, width=320, bg_color=None):
     """Draw text at (x, y). If bg_color is None, no background is drawn."""
     safe = _escape_text(text)
-    r = (text_color >> 16) & 0xFF
-    g = (text_color >> 8) & 0xFF
-    b = text_color & 0xFF
+    rgb = _rgb_cache.get(text_color)
+    if rgb is None:
+        rgb = '%d,%d,%d' % ((text_color >> 16) & 0xFF,
+                            (text_color >> 8) & 0xFF,
+                            text_color & 0xFF)
+        _rgb_cache[text_color] = rgb
     if bg_color is not None:
-        r2 = (bg_color >> 16) & 0xFF
-        g2 = (bg_color >> 8) & 0xFF
-        b2 = bg_color & 0xFF
-        eval('TEXTOUT_P("%s",G%d,%d,%d,%d,RGB(%d,%d,%d),%d,RGB(%d,%d,%d))'
-             % (safe, gr, x, y, fontsize, r, g, b, width, r2, g2, b2))
+        bg_rgb = _rgb_cache.get(bg_color)
+        if bg_rgb is None:
+            bg_rgb = '%d,%d,%d' % ((bg_color >> 16) & 0xFF,
+                                   (bg_color >> 8) & 0xFF,
+                                   bg_color & 0xFF)
+            _rgb_cache[bg_color] = bg_rgb
+        eval('TEXTOUT_P("%s",G%d,%d,%d,%d,RGB(%s),%d,RGB(%s))'
+             % (safe, gr, x, y, fontsize, rgb, width, bg_rgb))
     else:
-        eval('TEXTOUT_P("%s",G%d,%d,%d,%d,RGB(%d,%d,%d),%d)'
-             % (safe, gr, x, y, fontsize, r, g, b, width))
+        eval('TEXTOUT_P("%s",G%d,%d,%d,%d,RGB(%s),%d)'
+             % (safe, gr, x, y, fontsize, rgb, width))
+
+
+# Text width cache: (text, fontsize) -> pixel width
+# Avoids repeated PPL eval('TEXTSIZE(...)') calls for the same words
+_tw_cache = {}
+_TW_CACHE_MAX = 200  # max entries before clearing
 
 
 def text_width(text, fontsize):
-    """Get the pixel width of text at the given font size."""
+    """Get the pixel width of text at the given font size (cached)."""
+    global _tw_cache
+    key = (text, fontsize)
+    w = _tw_cache.get(key)
+    if w is not None:
+        return w
     safe = _escape_text(text)
     result = eval('TEXTSIZE("%s",%d)' % (safe, fontsize))
     if type(result) is list:
-        return result[0]
-    return result
+        w = result[0]
+    else:
+        w = result
+    # Evict entire cache if too large to avoid unbounded memory growth
+    if len(_tw_cache) >= _TW_CACHE_MAX:
+        _tw_cache = {}
+    _tw_cache[key] = w
+    return w
+
+
+def text_width_clear_cache():
+    """Clear the text_width cache (call on theme change if fonts change)."""
+    global _tw_cache
+    _tw_cache = {}
 
 
 def draw_image(gr, x, y, pixel_data, img_width, img_height,
@@ -222,9 +255,13 @@ def get_formula_size(expr):
 
 
 def _rgb_str(color):
-    """Convert 0xRRGGBB integer to 'RGB(r,g,b)' PPL string."""
-    return "RGB(%d,%d,%d)" % (
-        (color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF)
+    """Convert 0xRRGGBB integer to 'RGB(r,g,b)' PPL string (cached)."""
+    rgb = _rgb_cache.get(color)
+    if rgb is None:
+        rgb = '%d,%d,%d' % (
+            (color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF)
+        _rgb_cache[color] = rgb
+    return "RGB(%s)" % rgb
 
 
 def render_formula(gr, dest_x, dest_y, expr, expr_w, expr_h,

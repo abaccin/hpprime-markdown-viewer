@@ -7,7 +7,7 @@ from keycodes import (KEY_UP, KEY_DOWN, KEY_ESC, KEY_PLUS,
     KEY_MINUS, KEY_BACKSPACE, KEY_LOG, KEY_F1, KEY_F2,
     KEY_F3, KEY_F4, KEY_F5, KEY_F6)
 from markdown_viewer import MarkdownViewer
-from input_helpers import get_key, get_touch, get_ticks, get_menu_tap
+from input_helpers import get_key, get_key_fast, get_touch, get_ticks, get_menu_tap, mouse_clear
 from ui import (draw_menu, draw_notch, is_notch_tap,
     save_menu_area, restore_menu_area,
     show_search_input, show_context_menu, show_list_manager,
@@ -156,12 +156,6 @@ def main():
         marks = bookmarks.load(filename)
         viewer.set_bookmarks(marks)
 
-        fillrect(0, 0, 0, 320, 240,
-                 theme.colors['bg'], theme.colors['bg'])
-        viewer.render()
-        draw_notch()
-        _draw_progress(viewer)
-
         drag_last_y = -1
         touch_down = False
         tap_x = -1
@@ -172,12 +166,21 @@ def main():
         action = 'back'
         scrollbar_dragging = False
 
+        def _draw_overlay():
+            """Draw notch + progress bar (called after every scroll/render)."""
+            draw_notch()
+            _draw_progress(viewer)
+
         def redraw():
             fillrect(0, 0, 0, 320, 240,
                      theme.colors['bg'], theme.colors['bg'])
             viewer.render()
-            draw_notch()
-            _draw_progress(viewer)
+            _draw_overlay()
+
+        fillrect(0, 0, 0, 320, 240,
+                 theme.colors['bg'], theme.colors['bg'])
+        viewer.render()
+        _draw_overlay()
 
         def hide_menu():
             nonlocal menu_visible
@@ -199,14 +202,14 @@ def main():
             menu_visible = False
             term, search_case = show_search_input(
                 case_sensitive=search_case, menu_y=MENU_Y)
+            mouse_clear()
             fillrect(0, 0, 0, 320, 240,
                      theme.colors['bg'], theme.colors['bg'])
             if term:
                 viewer.search(term, case_sensitive=search_case)
             else:
                 viewer.clear_search()
-            draw_notch()
-            _draw_progress(viewer)
+            _draw_overlay()
 
         def open_bookmark_mgr():
             nonlocal marks, menu_visible
@@ -238,6 +241,7 @@ def main():
                         marks = bookmarks.remove(filename, marks[idx])
                         viewer.set_bookmarks(marks)
                         labels = ["Position " + str(p) for p in marks]
+            mouse_clear()
             redraw()
 
         def open_toc():
@@ -265,8 +269,7 @@ def main():
                 if idx < len(headers):
                     _, _, line_idx = headers[idx]
                     viewer.scroll_to_line(line_idx)
-                    draw_notch()
-                    _draw_progress(viewer)
+                    _draw_overlay()
                     return
             redraw()
 
@@ -318,34 +321,27 @@ def main():
                         continue
                     elif key == KEY_UP:
                         viewer.scroll_up()
-                        draw_notch()
-                        _draw_progress(viewer)
+                        _draw_overlay()
                     elif key == KEY_DOWN:
                         viewer.scroll_down()
-                        draw_notch()
-                        _draw_progress(viewer)
+                        _draw_overlay()
                     elif key == KEY_PLUS:
                         viewer.scroll_page_down()
-                        draw_notch()
-                        _draw_progress(viewer)
+                        _draw_overlay()
                     elif key == KEY_MINUS:
                         viewer.scroll_page_up()
-                        draw_notch()
-                        _draw_progress(viewer)
+                        _draw_overlay()
                     elif key == KEY_BACKSPACE:
                         viewer.scroll_to_top()
-                        draw_notch()
-                        _draw_progress(viewer)
+                        _draw_overlay()
                     elif key == KEY_LOG:
                         viewer.scroll_to_bottom()
-                        draw_notch()
-                        _draw_progress(viewer)
+                        _draw_overlay()
                     elif key == KEY_F1:
                         do_search()
                     elif key == KEY_F2:
                         viewer.search_next()
-                        draw_notch()
-                        _draw_progress(viewer)
+                        _draw_overlay()
                     elif key == KEY_F3:
                         open_toc()
                     elif key == KEY_F4:
@@ -371,16 +367,14 @@ def main():
                             ratio = viewer.scrollbar_y_to_ratio(ty)
                             viewer.scroll_to_ratio(ratio)
                             viewer.render()
-                            draw_notch()
-                            _draw_progress(viewer)
+                            _draw_overlay()
                     else:
                         # Continue scrollbar drag
                         if scrollbar_dragging:
                             ratio = viewer.scrollbar_y_to_ratio(ty)
                             viewer.scroll_to_ratio(ratio)
                             viewer.render()
-                            draw_notch()
-                            _draw_progress(viewer)
+                            _draw_overlay()
                         else:
                             moved_lp = abs(tx - tap_x) + abs(ty - tap_y)
                             if (not long_press_fired and
@@ -404,10 +398,8 @@ def main():
                                 if not menu_visible and ty < MENU_Y and drag_last_y >= 0:
                                     delta = drag_last_y - ty
                                     if abs(delta) >= DRAG_THRESHOLD:
-                                        viewer.scroll_by(delta)
-                                        viewer.render()
-                                        draw_notch()
-                                        _draw_progress(viewer)
+                                        viewer.scroll_by_fast(delta)
+                                        _draw_overlay()
                                         drag_last_y = ty
                 else:
                     if touch_down:
@@ -443,8 +435,7 @@ def main():
                                       and tap_x >= _search_pill_x
                                       and _search_pill_x < 320):
                                     viewer.search_next()
-                                    draw_notch()
-                                    _draw_progress(viewer)
+                                    _draw_overlay()
                                 else:
                                     # Check for link tap
                                     url = viewer.get_link_at(tap_x, tap_y)
