@@ -41,6 +41,12 @@ LIGHT = {
     'progress_bar': 0x4040C0,
     'formula_bg': 0xF0F0FF,
     'formula_border': 0xAAAACC,
+    'syn_keyword': 0x0000CC,
+    'syn_string': 0xA31515,
+    'syn_comment': 0x808080,
+    'syn_number': 0x098658,
+    'syn_builtin': 0x795E26,
+    'syn_decorator': 0xAF00DB,
 }
 
 DARK = {
@@ -84,11 +90,37 @@ DARK = {
     'progress_bar': 0x569CD6,
     'formula_bg': 0x1E1E2E,
     'formula_border': 0x404060,
+    'syn_keyword': 0x569CD6,
+    'syn_string': 0xCE9178,
+    'syn_comment': 0x6A9955,
+    'syn_number': 0xB5CEA8,
+    'syn_builtin': 0xDCDCAA,
+    'syn_decorator': 0xC586C0,
 }
 
 # Current active theme colors (mutable dict)
 colors = dict(LIGHT)
 _is_dark = False
+
+
+def _detect_system_theme():
+    """Detect calculator system theme via Theme(1). Returns True if dark."""
+    try:
+        import hpprime
+        t = hpprime.eval('Theme(1)')
+        return t == 2  # 1=light, 2=dark
+    except:
+        return False
+
+
+def init():
+    """Initialize theme from system setting. Call once at startup."""
+    global _is_dark
+    _is_dark = _detect_system_theme()
+    if _is_dark:
+        colors.update(DARK)
+    else:
+        colors.update(LIGHT)
 
 
 def toggle():

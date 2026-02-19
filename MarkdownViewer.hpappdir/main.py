@@ -126,6 +126,7 @@ def _draw_progress(viewer):
 
 def main():
     """Main entry point — file browser then markdown viewer."""
+    theme.init()
     last_file, last_scroll = load_last_file()
 
     while True:
@@ -456,6 +457,7 @@ def main():
         last_file = filename
         last_scroll = viewer.get_scroll_position()
         save_last_file(filename, last_scroll)
+        file_prefs.set_progress(filename, viewer.get_progress_percent())
 
         if action == 'exit':
             clear_screen()

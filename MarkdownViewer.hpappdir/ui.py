@@ -114,107 +114,115 @@ def restore_menu_area(menu_y=220, menu_h=20):
 # Text input bar
 # ---------------------------------------------------------------------------
 
-def show_input_bar(label="Find:", menu_y=220, colors=None):
-    """Show a one-line text input bar above the menu.
+# ---------------------------------------------------------------------------
+# Search history
+# ---------------------------------------------------------------------------
 
-    Returns entered text, or None on cancel (ESC).
-    The caller is responsible for redrawing underneath after return.
+_MAX_HISTORY = 10
 
-    Args:
-        label: text shown to the left of the input field.
-        menu_y: Y position of the menu bar (bar is drawn just above).
-        colors: dict with keys table_header_bg, table_border, header,
-                bg, normal.
+def _load_search_history():
+    try:
+        with open('.search_history', 'r') as f:
+            text = f.read().strip()
+        if not text:
+            return []
+        return [l.strip() for l in text.split('\n') if l.strip()][:_MAX_HISTORY]
+    except:
+        return []
+
+def _save_search_history(history):
+    try:
+        with open('.search_history', 'w') as f:
+            for term in history[:_MAX_HISTORY]:
+                f.write(term + '\n')
+    except:
+        pass
+
+def _add_to_search_history(term):
+    history = _load_search_history()
+    if term in history:
+        history.remove(term)
+    history.insert(0, term)
+    _save_search_history(history[:_MAX_HISTORY])
+
+
+def show_search_input(case_sensitive=False, menu_y=220, colors=None):
+    """Show search input with history and case-sensitivity toggle.
+
+    Returns (term, case_sensitive) tuple, or (None, case_sensitive) on cancel.
     """
-    key_chars = {
-        14: 'a', 15: 'b', 16: 'c', 17: 'd', 18: 'e',
-        20: 'f', 21: 'g', 22: 'h', 23: 'i', 24: 'j',
-        25: 'k', 26: 'l', 27: 'm', 28: 'n', 29: 'o',
-        31: 'p', 32: 'q', 33: 'r', 34: 's', 35: 't',
-        37: 'u', 38: 'v', 39: 'w', 40: 'x', 42: 'y',
-        43: 'z', 49: ' ', 48: '.', 45: '-',
-    }
-    c = _c(colors)
-    text = ""
-    bar_y = menu_y - 22
-    lbl_w = text_width(label, FONT_10) + 8
-    field_x1 = lbl_w
-    field_x2 = 278
-    ok_x1 = 282
-    ok_x2 = 316
-    ok_y1 = bar_y + 2
-    ok_y2 = bar_y + 18
-    max_text_w = field_x2 - field_x1 - 8
-    touch_was_down = False
-    tap_x = -1
-    tap_y = -1
-
-    def draw_bar():
-        # Background
-        draw_rectangle(GR_AFF, 0, bar_y, 320, bar_y + 20,
-                       c['table_header_bg'], 255, c['table_header_bg'], 255)
-        # Top border
-        draw_rectangle(GR_AFF, 0, bar_y, 320, bar_y + 1,
-                       c['table_border'], 255, c['table_border'], 255)
-        # Label
-        draw_text(GR_AFF, 4, bar_y + 4, label, FONT_10, c['header'])
-        # Input field
-        draw_rectangle(GR_AFF, field_x1, bar_y + 2, field_x2, bar_y + 18,
-                       c['bg'], 255, c['bg'], 255)
-        # Field border
-        draw_rectangle(GR_AFF, field_x1, bar_y + 2, field_x2, bar_y + 3,
-                       c['table_border'], 255, c['table_border'], 255)
-        draw_rectangle(GR_AFF, field_x1, bar_y + 17, field_x2, bar_y + 18,
-                       c['table_border'], 255, c['table_border'], 255)
-        draw_rectangle(GR_AFF, field_x1, bar_y + 2, field_x1 + 1, bar_y + 18,
-                       c['table_border'], 255, c['table_border'], 255)
-        draw_rectangle(GR_AFF, field_x2 - 1, bar_y + 2, field_x2, bar_y + 18,
-                       c['table_border'], 255, c['table_border'], 255)
-        # Text + cursor
-        display = text
-        tw = text_width(display, FONT_10)
-        while tw > max_text_w and len(display) > 0:
-            display = display[1:]
-            tw = text_width(display, FONT_10)
-        draw_text(GR_AFF, field_x1 + 4, bar_y + 4, display, FONT_10,
-                  c['normal'], max_text_w)
-        cx = field_x1 + 4 + tw
-        if cx < field_x2 - 4:
-            draw_rectangle(GR_AFF, cx, bar_y + 4, cx + 1, bar_y + 16,
-                           c['normal'], 255, c['normal'], 255)
-        # OK button
-        draw_rectangle(GR_AFF, ok_x1, ok_y1, ok_x2, ok_y2,
-                       c['header'], 255, c['header'], 255)
-        okw = text_width("OK", FONT_10)
-        draw_text(GR_AFF, ok_x1 + (ok_x2 - ok_x1 - okw) // 2,
-                  bar_y + 4, "OK", FONT_10, 0xFFFFFF)
-
-    draw_bar()
+    from hpprime import eval as heval
+    history = _load_search_history()
+    cs = case_sensitive
 
     while True:
-        k = get_key()
-        if k > 0:
-            if k == KEY_ENTER:
-                return text if text else None
-            elif k == KEY_ESC:
-                return None
-            elif k == KEY_BACKSPACE:
-                if text:
-                    text = text[:-1]
-                    draw_bar()
-            elif k in key_chars:
-                text += key_chars[k]
-                draw_bar()
-
-        tx, ty = get_touch()
-        if tx >= 0 and ty >= 0:
-            touch_was_down = True
-            tap_x = tx
-            tap_y = ty
-        elif touch_was_down:
-            touch_was_down = False
-            if ok_x1 <= tap_x <= ok_x2 and ok_y1 <= tap_y <= ok_y2:
-                return text if text else None
+        heval('print')  # Clear terminal screen
+        cs_label = '[Aa]' if cs else '[aa]'
+        print('Search ' + cs_label)
+        if history:
+            print('Recent:')
+            # Two-column layout to avoid scrollbar
+            n = len(history)
+            half = (n + 1) // 2  # rows needed
+            nw = len(str(n))  # digit width for largest index
+            # Find max term width in left column
+            max_term = 0
+            for i in range(half):
+                if len(history[i]) > max_term:
+                    max_term = len(history[i])
+            # col_w = index_width + space + term + gap
+            col_w = nw + 1 + max_term + 2
+            max_line = 38
+            # Cap left column so right column has room
+            max_col = max_line // 2
+            if col_w > max_col:
+                max_term = max_col - nw - 3
+                col_w = max_col
+            for row in range(half):
+                li = row
+                ri = row + half
+                # Left entry: right-align number, pad term
+                num_l = str(li + 1)
+                num_l = ' ' * (nw - len(num_l)) + num_l
+                term_l = history[li]
+                if len(term_l) > max_term:
+                    term_l = term_l[:max_term - 1] + '.'
+                left = num_l + ' ' + term_l
+                if ri < n:
+                    num_r = str(ri + 1)
+                    num_r = ' ' * (nw - len(num_r)) + num_r
+                    remaining = max_line - col_w - nw - 1
+                    term_r = history[ri]
+                    if len(term_r) > remaining:
+                        term_r = term_r[:remaining - 1] + '.'
+                    right = num_r + ' ' + term_r
+                    line = left + ' ' * (col_w - len(left)) + right
+                else:
+                    line = left
+                print(line)
+        print('')
+        print('#=pick  !=case  empty=cancel')
+        try:
+            result = input('')
+        except:
+            return (None, cs)
+        if not result or not result.strip():
+            return (None, cs)
+        result = result.strip()
+        if result == '!':
+            cs = not cs
+            continue
+        # Check for history shortcut
+        try:
+            idx = int(result) - 1
+            if 0 <= idx < len(history):
+                term = history[idx]
+                _add_to_search_history(term)
+                return (term, cs)
+        except:
+            pass
+        _add_to_search_history(result)
+        return (result, cs)
 
 
 # ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@ from file_ops import list_files, get_file_size
 from input_helpers import get_key, get_touch, get_menu_tap
 from ui import draw_menu
 import file_prefs
+import math
 
 # Column layout (pixel positions)
 _COL_FAV_X = 7
@@ -65,6 +66,58 @@ def _format_size(size):
     if frac < 10:
         return str(whole) + '.0' + str(frac) + ' KB'
     return str(whole) + '.' + str(frac) + ' KB'
+
+
+def _draw_pie(cx, cy, r, pct, fg_color, bg_color, border_color):
+    """Draw a tiny filled pie chart showing pct% progress.
+
+    Uses scanline rendering with fillrect for efficiency.
+    The pie fills clockwise from 12 o'clock.
+    """
+    # Threshold angle in radians (clockwise from 12 o'clock)
+    thresh = pct * 2 * math.pi / 100
+    r2 = r * r
+    ri2 = (r - 1) * (r - 1)
+    for dy in range(-r, r + 1):
+        # Collect runs of same color across this scanline
+        run_start = None
+        run_color = None
+        for dx in range(-r, r + 1):
+            d2 = dx * dx + dy * dy
+            if d2 > r2:
+                c = None
+            elif d2 >= ri2:
+                # Border ring — but fill over it if in pie sector
+                angle = math.atan2(dx, -dy)
+                if angle < 0:
+                    angle += 2 * math.pi
+                if pct >= 100 or angle <= thresh:
+                    c = fg_color
+                else:
+                    c = border_color
+            else:
+                angle = math.atan2(dx, -dy)
+                if angle < 0:
+                    angle += 2 * math.pi
+                if pct >= 100 or angle <= thresh:
+                    c = fg_color
+                else:
+                    c = bg_color
+            # Flush run if color changed
+            if c != run_color:
+                if run_color is not None and run_start is not None:
+                    x1 = cx + run_start
+                    w = dx - run_start
+                    fillrect(GR_AFF, x1, cy + dy, w, 1,
+                             run_color, run_color)
+                run_start = dx
+                run_color = c
+        # Flush last run
+        if run_color is not None and run_start is not None:
+            x1 = cx + run_start
+            w = r + 1 - run_start
+            fillrect(GR_AFF, x1, cy + dy, w, 1,
+                     run_color, run_color)
 
 
 def _file_label(fname):
@@ -259,6 +312,23 @@ def file_picker(title="Files", subtitle="Select a file", ext=None,
             # Size
             draw_text(GR_AFF, _COL_SIZE_X + 2, y + 3, size_str,
                       FONT_10, text_c)
+
+            # Reading progress pie chart
+            pct = file_prefs.get_progress(fname)
+            if pct > 0:
+                pie_cx = _COL_RIGHT - 8
+                pie_cy = y + _ITEM_H // 2 - 1
+                pie_r = 5
+                pie_fg = c.get('progress_bar', c['header'])
+                if i == selected:
+                    pie_bg = c['browser_sel']
+                elif (i - start) % 2 == 1:
+                    pie_bg = c.get('table_alt_bg', c['browser_bg'])
+                else:
+                    pie_bg = c['browser_bg']
+                pie_border = c.get('browser_hint', c['table_border'])
+                _draw_pie(pie_cx, pie_cy, pie_r, pct,
+                          pie_fg, pie_bg, pie_border)
 
             # Column dividers for this row
             div_c = c['table_border']

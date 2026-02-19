@@ -295,6 +295,7 @@ class MarkdownRenderer:
         self.scroll_offset = 0
         self._table_buffer = []
         self._in_code_fence = False
+        self._code_lang = ''
         self._content_height = 0
         self._blockquote_depth = 0
         self._search_term = None
@@ -445,6 +446,7 @@ class MarkdownRenderer:
                     return
                 else:
                     self._in_code_fence = True
+                    self._code_lang = tag
                     return
 
         if self._in_math_fence:
@@ -508,17 +510,148 @@ class MarkdownRenderer:
             else:
                 self._render_paragraph(line)
 
+    # Keywords per language for syntax highlighting
+    _KW = {
+        'python': {'False','None','True','and','as','assert','async',
+            'await','break','class','continue','def','del','elif',
+            'else','except','finally','for','from','global','if',
+            'import','in','is','lambda','not','or','pass','raise',
+            'return','try','while','with','yield'},
+        'c': {'auto','break','case','char','const','continue',
+            'default','do','double','else','enum','extern','float',
+            'for','goto','if','int','long','register','return',
+            'short','signed','sizeof','static','struct','switch',
+            'typedef','union','unsigned','void','volatile','while',
+            'include','define','ifdef','ifndef','endif','pragma'},
+        'ppl': {'BEGIN','END','IF','THEN','ELSE','FOR','FROM','TO',
+            'STEP','DO','WHILE','REPEAT','UNTIL','RETURN','LOCAL',
+            'EXPORT','CASE','DEFAULT','IFERR','KILL','PRINT',
+            'FREEZE','MSGBOX','INPUT','CHOOSE','TEXTOUT_P',
+            'RECT_P','LINE_P','ARC_P','BLIT_P','DRAWMENU',
+            'GROBW_P','GROBH_P','DIMGROB_P','RGB','GETKEY',
+            'MOUSE','WAIT','SIZE','DIM','MAKELIST','CONCAT'},
+    }
+    _KW['cpp'] = _KW['c']
+    _KW['h'] = _KW['c']
+    _KW['py'] = _KW['python']
+
+    _BUILTINS = {
+        'python': {'abs','all','any','bin','bool','bytes','chr',
+            'dict','dir','enumerate','eval','filter','float',
+            'format','getattr','hasattr','hex','id','input','int',
+            'isinstance','iter','len','list','map','max','min',
+            'next','object','oct','open','ord','pow','print',
+            'range','repr','reversed','round','set','setattr',
+            'slice','sorted','str','sum','super','tuple','type',
+            'vars','zip','self'},
+    }
+    _BUILTINS['py'] = _BUILTINS['python']
+
+    def _tokenize_code(self, line, lang):
+        """Tokenize a code line into (text, color_key) segments."""
+        c = theme.colors
+        code_c = c['code']
+        kw_c = c.get('syn_keyword', code_c)
+        str_c = c.get('syn_string', code_c)
+        cmt_c = c.get('syn_comment', code_c)
+        num_c = c.get('syn_number', code_c)
+        bi_c = c.get('syn_builtin', code_c)
+        dec_c = c.get('syn_decorator', code_c)
+        kw_set = self._KW.get(lang)
+        bi_set = self._BUILTINS.get(lang)
+        tokens = []
+        i = 0
+        n = len(line)
+        while i < n:
+            ch = line[i]
+            # Comments: # (python/ppl) or // (c/cpp)
+            if ch == '#' and lang in ('python', 'py', 'ppl'):
+                # But skip #include, #define etc in PPL context
+                if lang == 'ppl' or (i == 0 or line[i-1] == ' '):
+                    tokens.append((line[i:], cmt_c))
+                    break
+            if ch == '/' and i + 1 < n and line[i+1] == '/' and lang in ('c', 'cpp', 'h', 'ppl'):
+                tokens.append((line[i:], cmt_c))
+                break
+            # Strings
+            if ch in ('"', "'"):
+                q = ch
+                j = i + 1
+                while j < n:
+                    if line[j] == '\\':
+                        j += 2
+                        continue
+                    if line[j] == q:
+                        j += 1
+                        break
+                    j += 1
+                tokens.append((line[i:j], str_c))
+                i = j
+                continue
+            # Decorator
+            if ch == '@' and lang in ('python', 'py') and (i == 0 or line[i-1] == ' '):
+                j = i + 1
+                while j < n and (line[j].isalpha() or line[j] == '_' or line[j] == '.'):
+                    j += 1
+                tokens.append((line[i:j], dec_c))
+                i = j
+                continue
+            # Numbers
+            if ch.isdigit() or (ch == '.' and i + 1 < n and line[i+1].isdigit()):
+                j = i + 1
+                while j < n and (line[j].isdigit() or line[j] in '.xXabcdefABCDEF_'):
+                    j += 1
+                tokens.append((line[i:j], num_c))
+                i = j
+                continue
+            # Identifiers / keywords
+            if ch.isalpha() or ch == '_':
+                j = i + 1
+                while j < n and (line[j].isalpha() or line[j].isdigit() or line[j] == '_'):
+                    j += 1
+                word = line[i:j]
+                if kw_set and word in kw_set:
+                    tokens.append((word, kw_c))
+                elif bi_set and word in bi_set:
+                    tokens.append((word, bi_c))
+                else:
+                    tokens.append((word, code_c))
+                i = j
+                continue
+            # Other characters (operators, whitespace, etc.)
+            j = i + 1
+            while j < n and not (line[j].isalpha() or line[j] == '_' or
+                    line[j].isdigit() or line[j] in '#@"\'/' or
+                    (line[j] == '.' and j + 1 < n and line[j+1].isdigit())):
+                j += 1
+            tokens.append((line[i:j], code_c))
+            i = j
+        return tokens
+
     def _render_code_line(self, line):
-        """Render a line inside a code fence with gray background."""
+        """Render a line inside a code fence with syntax highlighting."""
         if self._in_view(self.current_y, self.line_height):
             code_bg = theme.colors['code_bg']
             draw_rectangle(self.gr, self.x, self.current_y,
                            self.x + self.width, self.current_y + self.line_height,
                            code_bg, 255, code_bg, 255)
             if line:
-                draw_text(self.gr, self.x + 4, self.current_y,
-                          line, FONT_10, theme.colors['code'],
-                          self.width - 4, bg_color=code_bg)
+                lang = self._code_lang
+                if lang and lang in self._KW:
+                    tokens = self._tokenize_code(line, lang)
+                    cx = self.x + 4
+                    for text, color in tokens:
+                        tw = text_width(text, FONT_10)
+                        if cx + tw > self.x + self.width:
+                            break
+                        draw_text(self.gr, cx, self.current_y,
+                                  text, FONT_10, color,
+                                  self.width, bg_color=code_bg)
+                        cx += tw
+                else:
+                    draw_text(self.gr, self.x + 4, self.current_y,
+                              line, FONT_10, theme.colors['code'],
+                              self.width - 4, bg_color=code_bg)
         self.current_y += self.line_height
 
     def _flush_math(self):

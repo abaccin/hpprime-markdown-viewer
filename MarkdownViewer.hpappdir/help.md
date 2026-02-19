@@ -12,7 +12,7 @@ No PC required. See also: [Link Demo](demo.md)
 ### File Browser
 
 - Tap a **column header** to sort by that column
-- Tap the **\u2605** star on a row to pin/unpin it
+- Tap the **★** star on a row to pin/unpin it
 - Tap **Recent** to see recently opened files
 - Tap **Theme** to switch light/dark theme
 - Press **Up/Down** to navigate the file list
@@ -35,10 +35,10 @@ No PC required. See also: [Link Demo](demo.md)
 
 #### Favorites / Pinned Files
 
-Tap the **\u2605** yellow star icon in the star column
+Tap the **★** yellow star icon in the star column
 of any file row to pin or unpin it.
 
-Pinned files show a yellow **\u2605** star. When sorting
+Pinned files show a yellow **★** star. When sorting
 by the star column, favorites appear at the top.
 Favorites persist across app restarts.
 
@@ -52,14 +52,14 @@ Select one to open it directly.
 
 The browser has three sortable columns:
 
-- **\u2605** (Star) — sort favorites first
+- **★** (Star) — sort favorites first
 - **Name** — sort alphabetically
 - **Size** — sort by file size
 
 Tap a column header to sort by it.
 Tap the same header again to reverse direction.
-The active column shows **\u25B2** (ascending)
-or **\u25BC** (descending).
+The active column shows **▲** (ascending)
+or **▼** (descending).
 
 #### File Organization
 

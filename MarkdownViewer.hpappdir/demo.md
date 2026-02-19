@@ -15,6 +15,39 @@ Press **ESC** to go back to the previous file.
 
 Try it: [Back to Help](help.md)
 
+## Code Highlighting
+
+Python syntax highlighting:
+
+```python
+import hpprime as h
+
+def greet(name="World"):
+    """Say hello."""
+    # Print greeting
+    msg = "Hello, " + name + "!"
+    h.eval('MSGBOX("' + msg + '")')
+    return 42
+
+for i in range(10):
+    if i % 2 == 0:
+        print(i)
+```
+
+PPL code:
+
+```ppl
+EXPORT Main()
+BEGIN
+  LOCAL x, y;
+  x := GETKEY();
+  IF x > 0 THEN
+    TEXTOUT_P("Key: " + x, G0, 10, 10, 2);
+    WAIT(0.5);
+  END;
+END;
+```
+
 ## Math Formulas
 
 Formulas render as pretty-print CAS expressions.

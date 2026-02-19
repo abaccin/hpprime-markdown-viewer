@@ -1,11 +1,12 @@
-"""File preferences: favorites, recent files, and sort mode.
+"""File preferences: favorites, recent files, sort mode, and reading progress.
 
 Manages pinned/favorite files, recently opened file history,
-and sort direction state for the file browser.
+sort direction state for the file browser, and per-file reading progress.
 
 Persistence:
     .favorites  — one pinned filename per line
     .recent     — one recent filename per line (most recent first)
+    .progress   — filename:percent per line
 """
 
 MAX_RECENT = 10
@@ -119,3 +120,61 @@ def add_recent(filename):
     _recent = recent
     _save_recent_file(recent)
     return recent
+
+
+# --- Reading progress per file ---
+
+_progress = None
+
+
+def _load_progress_file():
+    try:
+        with open('.progress', 'r') as f:
+            text = f.read().strip()
+        if not text:
+            return {}
+        d = {}
+        for line in text.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            idx = line.rfind(':')
+            if idx > 0:
+                fname = line[:idx]
+                try:
+                    d[fname] = int(line[idx + 1:])
+                except:
+                    pass
+        return d
+    except:
+        return {}
+
+
+def _save_progress_file(d):
+    try:
+        with open('.progress', 'w') as f:
+            for fname in d:
+                f.write(fname + ':' + str(d[fname]) + '\n')
+    except:
+        pass
+
+
+def get_progress(filename=None):
+    """Get reading progress. If filename given, returns 0-100 int.
+    If None, returns the full dict."""
+    global _progress
+    if _progress is None:
+        _progress = _load_progress_file()
+    if filename is None:
+        return _progress
+    return _progress.get(filename, 0)
+
+
+def set_progress(filename, percent):
+    """Save reading progress (0-100) for a file."""
+    global _progress
+    if _progress is None:
+        _progress = _load_progress_file()
+    pct = max(0, min(100, int(percent)))
+    _progress[filename] = pct
+    _save_progress_file(_progress)
