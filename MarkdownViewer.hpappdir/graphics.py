@@ -1,4 +1,4 @@
-from hpprime import eval, fillrect, dimgrob
+from hpprime import eval, fillrect, dimgrob, grobw, grobh, strblit2 as _strblit2
 
 
 def draw_rectangle(gr, x1, y1, x2, y2, edge_color, edge_alpha,
@@ -25,18 +25,21 @@ def draw_text(gr, x, y, text, fontsize, text_color, width=320, bg_color=None):
                             (text_color >> 8) & 0xFF,
                             text_color & 0xFF)
         _rgb_cache[text_color] = rgb
-    if bg_color is not None:
-        bg_rgb = _rgb_cache.get(bg_color)
-        if bg_rgb is None:
-            bg_rgb = '%d,%d,%d' % ((bg_color >> 16) & 0xFF,
-                                   (bg_color >> 8) & 0xFF,
-                                   bg_color & 0xFF)
-            _rgb_cache[bg_color] = bg_rgb
-        eval('TEXTOUT_P("%s",G%d,%d,%d,%d,RGB(%s),%d,RGB(%s))'
-             % (safe, gr, x, y, fontsize, rgb, width, bg_rgb))
-    else:
-        eval('TEXTOUT_P("%s",G%d,%d,%d,%d,RGB(%s),%d)'
-             % (safe, gr, x, y, fontsize, rgb, width))
+    try:
+        if bg_color is not None:
+            bg_rgb = _rgb_cache.get(bg_color)
+            if bg_rgb is None:
+                bg_rgb = '%d,%d,%d' % ((bg_color >> 16) & 0xFF,
+                                       (bg_color >> 8) & 0xFF,
+                                       bg_color & 0xFF)
+                _rgb_cache[bg_color] = bg_rgb
+            eval('TEXTOUT_P("%s",G%d,%d,%d,%d,RGB(%s),%d,RGB(%s))'
+                 % (safe, gr, x, y, fontsize, rgb, width, bg_rgb))
+        else:
+            eval('TEXTOUT_P("%s",G%d,%d,%d,%d,RGB(%s),%d)'
+                 % (safe, gr, x, y, fontsize, rgb, width))
+    except:
+        pass
 
 
 # Text width cache: (text, fontsize) -> pixel width
@@ -53,11 +56,19 @@ def text_width(text, fontsize):
     if w is not None:
         return w
     safe = _escape_text(text)
-    result = eval('TEXTSIZE("%s",%d)' % (safe, fontsize))
-    if type(result) is list:
-        w = result[0]
-    else:
-        w = result
+    try:
+        result = eval('TEXTSIZE("%s",%d)' % (safe, fontsize))
+        if type(result) is list:
+            w = int(result[0])
+        elif type(result) is int:
+            w = result
+        elif type(result) is float:
+            w = int(result)
+        else:
+            # PPL returned an error string — estimate width
+            w = len(text) * 6
+    except:
+        w = len(text) * 6
     # Evict entire cache if too large to avoid unbounded memory growth
     if len(_tw_cache) >= _TW_CACHE_MAX:
         _tw_cache = {}
@@ -127,11 +138,18 @@ def open_file(gr, name, app_name=""):
     gr: target graphics buffer number
     name: filename (e.g. 'icon.png')
     app_name: app name for cross-app file access (optional)
+    Returns True on success, False on failure.
     """
-    if app_name == "":
-        eval('G%d:=AFiles("%s")' % (gr, name))
-    else:
-        eval('G%d:=EXPR(REPLACE("%s"," ","_")+".AFiles(""%s"")")' % (gr, app_name, name))
+    try:
+        if app_name == "":
+            eval('IFERR G%d:=AFiles("%s") THEN 0 END' % (gr, name))
+        else:
+            eval('IFERR G%d:=EXPR(REPLACE("%s"," ","_")+".AFiles(""%s"")") THEN 0 END' % (gr, app_name, name))
+        # Verify the GROB was actually loaded
+        w = grobw(gr)
+        return w > 0
+    except:
+        return False
 
 
 def blit(gr, dx1, dy1, dx2, dy2, src_gr, sx1, sy1, sx2, sy2,
@@ -149,10 +167,10 @@ def blit(gr, dx1, dy1, dx2, dy2, src_gr, sx1, sy1, sx2, sy2,
         cmd = "BLIT_P(G{0},{1},{2},{3},{4},G{5},{6},{7},{8},{9},{10},{11})".format(
             gr, dx1, dy1, dx2, dy2, src_gr, sx1, sy1, sx2, sy2,
             transp_color, transp_alpha)
+        eval(cmd)
     else:
-        cmd = "BLIT_P(G{0},{1},{2},{3},{4},G{5},{6},{7},{8},{9})".format(
-            gr, dx1, dy1, dx2, dy2, src_gr, sx1, sy1, sx2, sy2)
-    eval(cmd)
+        _strblit2(gr, dx1, dy1, dx2 - dx1, dy2 - dy1,
+                  src_gr, sx1, sy1, sx2 - sx1, sy2 - sy1)
 
 
 def _parse_func_args(s):
@@ -272,9 +290,7 @@ def render_formula(gr, dest_x, dest_y, expr, expr_w, expr_h,
     pad = 6
     gw = expr_w + pad * 2
     gh = expr_h + pad * 2
-    bc = _rgb_str(border_color)
     tc = _rgb_str(text_color)
-    bgc = _rgb_str(bg_color)
 
     x1 = dest_x
     y1 = dest_y
@@ -282,8 +298,7 @@ def render_formula(gr, dest_x, dest_y, expr, expr_w, expr_h,
     y2 = y1 + gh + 1
 
     # Draw bordered box with theme background
-    eval("RECT_P(G%d,%d,%d,%d,%d,%s,%s)" %
-         (gr, x1, y1, x2, y2, bc, bgc))
+    fillrect(gr, x1, y1, x2 - x1, y2 - y1, border_color, bg_color)
 
     # Draw formatted text
     eval('TEXTOUT_P("%s",G%d,%d,%d,%d,%s,%d)' %
@@ -296,8 +311,8 @@ def get_grob_size(gr):
     Returns (width, height) or None on failure.
     """
     try:
-        w = int(eval('GROBW_P(G%d)' % gr) or 0)
-        h = int(eval('GROBH_P(G%d)' % gr) or 0)
+        w = grobw(gr)
+        h = grobh(gr)
         if w > 0 and h > 0:
             return (w, h)
     except:

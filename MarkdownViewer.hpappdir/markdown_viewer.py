@@ -1,7 +1,7 @@
 from graphics import (draw_text, draw_rectangle, text_width, draw_image,
     open_file, blit, get_grob_size, get_formula_size, render_formula)
 from constants import (FONT_10, FONT_12, FONT_14,
-    TABLE_MAX_COLS, TABLE_CELL_PAD, GR_TMP, GR_BACK, GR_AFF,
+    TABLE_MAX_COLS, TABLE_CELL_PAD, GR_TMP, GR_BACK, GR_AFF, GR_IMG_CACHE,
     TRANSPARENCY, SCROLLBAR_WIDTH, SCROLLBAR_MIN_THUMB,
     BLOCKQUOTE_INDENT, BLOCKQUOTE_BAR_WIDTH, NESTED_LIST_INDENT)
 import gc
@@ -412,6 +412,8 @@ class MarkdownRenderer:
         self._word_wrap = True
         self._collapsed_headers = set()
         self._render_count = 0
+        self._img_size_cache = {}  # filename -> (w, h)
+        self._cached_img_file = None  # filename currently in GR_IMG_CACHE
 
     def _in_view(self, y, h=12):
         """Check if a line at y with height h is within the visible area."""
@@ -483,6 +485,7 @@ class MarkdownRenderer:
 
         if is_measuring:
             # --- Full measurement pass: build cache ---
+            gc.collect()
             cache_y = []
             cache_f = []
             for _li, line in enumerate(lines):
@@ -512,7 +515,7 @@ class MarkdownRenderer:
                     continue
                 self._render_line(line, _li)
                 # Periodically collect garbage during large documents
-                if _li % 80 == 79:
+                if _li % 40 == 39:
                     gc.collect()
             if self._table_buffer:
                 self._flush_table()
@@ -588,6 +591,8 @@ class MarkdownRenderer:
 
     def _render_line(self, line, line_idx=-1):
         """Render a single line of markdown."""
+        if type(line) is not str:
+            line = str(line)
         line = line.rstrip()
 
         # Handle code/math fences
@@ -829,38 +834,41 @@ class MarkdownRenderer:
 
     def _render_formula(self, expr):
         """Render a CAS expression as a formatted formula."""
-        # Get cached dimensions or measure
-        if expr in self._formula_cache:
-            size = self._formula_cache[expr]
-        else:
-            size = get_formula_size(expr)
-            if size is None:
-                fw = min(text_width(expr, self._body_font) + 20,
-                         self.width - 20)
-                size = (fw, 14)
-            self._formula_cache[expr] = size
+        try:
+            # Get cached dimensions or measure
+            if expr in self._formula_cache:
+                size = self._formula_cache[expr]
+            else:
+                size = get_formula_size(expr)
+                if size is None:
+                    fw = min(text_width(expr, self._body_font) + 20,
+                             self.width - 20)
+                    size = (fw, 14)
+                self._formula_cache[expr] = size
 
-        fw, fh = size
-        pad = 6
-        total_w = fw + pad * 2 + 2
-        total_h = fh + pad * 2 + 2
+            fw, fh = size
+            pad = 6
+            total_w = fw + pad * 2 + 2
+            total_h = fh + pad * 2 + 2
 
-        # Clamp width to available area
-        if total_w > self.width:
-            total_w = self.width
+            # Clamp width to available area
+            if total_w > self.width:
+                total_w = self.width
 
-        # Center horizontally
-        fx = self.x + (self.width - total_w) // 2
+            # Center horizontally
+            fx = self.x + (self.width - total_w) // 2
 
-        c = theme.colors
-        if self._in_view(self.current_y, total_h):
-            render_formula(self.gr, fx, self.current_y,
-                           expr, fw, fh,
-                           c.get('formula_border', c['table_border']),
-                           c['normal'],
-                           c.get('formula_bg', 0xF0F0FF))
+            c = theme.colors
+            if self._in_view(self.current_y, total_h):
+                render_formula(self.gr, fx, self.current_y,
+                               expr, fw, fh,
+                               c.get('formula_border', c['table_border']),
+                               c['normal'],
+                               c.get('formula_bg', 0xF0F0FF))
 
-        self.current_y += total_h + 4
+            self.current_y += total_h + 4
+        except:
+            self.current_y += self.line_height
 
     def _is_ordered_list(self, line):
         """Check if line starts with a number followed by '. '."""
@@ -1086,6 +1094,8 @@ class MarkdownRenderer:
 
     def _render_paragraph(self, line):
         """Render a paragraph with inline formatting."""
+        if type(line) is not str:
+            line = str(line)
         self._render_wrapped(line, self.x)
 
     def _draw_line_decorations(self):
@@ -1105,6 +1115,8 @@ class MarkdownRenderer:
 
     def _render_wrapped(self, text, start_x):
         """Render text with word wrapping and inline formatting."""
+        if type(text) is not str:
+            text = str(text)
         segments = self._parse_inline(text)
         current_x = start_x
         max_x = self.x + self.width - SCROLLBAR_WIDTH - 1
@@ -1137,9 +1149,13 @@ class MarkdownRenderer:
             seg_url = seg[2] if len(seg) > 2 else None
             color = color_map.get(seg_type, color_map['normal'])
 
+            if type(seg_text) is not str:
+                seg_text = str(seg_text)
             words = seg_text.split(' ')
             for wi in range(len(words)):
                 word = words[wi]
+                if type(word) is not str:
+                    word = str(word)
                 if wi > 0:
                     if current_x + sp_w > max_x and current_x > start_x:
                         if wrap:
@@ -1152,7 +1168,6 @@ class MarkdownRenderer:
                 if not word:
                     continue
 
-                word = str(word)
                 w = text_width(word, bf)
                 if current_x + w > max_x and current_x > start_x:
                     if wrap:
@@ -1315,13 +1330,32 @@ class MarkdownRenderer:
             self._render_file_image(url)
 
     def _render_file_image(self, filename):
-        """Render an image loaded from a file via AFiles."""
+        """Render an image loaded from a file via AFiles.
+
+        Uses GR_IMG_CACHE to persist the loaded GROB across scroll
+        redraws, avoiding repeated AFiles eval calls that crash the
+        emulator.
+        """
         try:
-            open_file(GR_TMP, filename)
-            size = get_grob_size(GR_TMP)
-            if not size:
-                return
-            img_w, img_h = size
+            cached = self._img_size_cache.get(filename)
+            if cached:
+                img_w, img_h = cached
+                if img_w == 0:
+                    self._render_image_placeholder(filename)
+                    return
+            else:
+                if not open_file(GR_IMG_CACHE, filename):
+                    self._img_size_cache[filename] = (0, 0)
+                    self._render_image_placeholder(filename)
+                    return
+                size = get_grob_size(GR_IMG_CACHE)
+                if not size:
+                    self._img_size_cache[filename] = (0, 0)
+                    self._render_image_placeholder(filename)
+                    return
+                img_w, img_h = size
+                self._img_size_cache[filename] = (img_w, img_h)
+                self._cached_img_file = filename
 
             display_w = img_w
             display_h = img_h
@@ -1331,35 +1365,72 @@ class MarkdownRenderer:
 
             img_x = self.x + (self.width - display_w) // 2
             if self._in_view(self.current_y, display_h):
+                if self._cached_img_file != filename:
+                    if not open_file(GR_IMG_CACHE, filename):
+                        self.current_y += display_h + 4
+                        return
+                    self._cached_img_file = filename
                 blit(self.gr, img_x, self.current_y,
                      img_x + display_w, self.current_y + display_h,
-                     GR_TMP, 0, 0, img_w, img_h,
+                     GR_IMG_CACHE, 0, 0, img_w, img_h,
                      TRANSPARENCY)
             self.current_y += display_h + 4
         except:
-            pass
+            self.current_y += self.line_height
+
+    def _render_image_placeholder(self, filename):
+        """Show a placeholder when an image file cannot be loaded."""
+        label = '[Image: ' + filename + ']'
+        if self._in_view(self.current_y):
+            c = theme.colors
+            draw_text(self.gr, self.x + 10, self.current_y,
+                      label, self._body_font,
+                      c.get('italic', c['normal']),
+                      self.width - 10)
+        self.current_y += self.line_height
 
     def _render_base64_image(self, url):
         """Render an image from base64-encoded raw pixel data."""
-        b64_data = url[url.index('base64,') + 7:]
-        raw = self._base64_decode(b64_data)
-        if len(raw) < 5:
-            return
+        try:
+            b64_data = url[url.index('base64,') + 7:]
 
-        img_w = (raw[0] << 8) | raw[1]
-        img_h = (raw[2] << 8) | raw[3]
-        pixel_data = raw[4:]
+            # Decode just the 4-byte header to get width/height
+            header = self._base64_decode_n(b64_data, 4)
+            if len(header) < 4:
+                return
 
-        if img_w <= 0 or img_h <= 0:
-            return
-        if len(pixel_data) < img_w * img_h * 3:
-            return
+            img_w = (header[0] << 8) | header[1]
+            img_h = (header[2] << 8) | header[3]
+            if img_w <= 0 or img_h <= 0:
+                return
 
-        img_x = self.x + (self.width - img_w) // 2
-        if self._in_view(self.current_y, img_h):
-            draw_image(self.gr, img_x, self.current_y,
-                       pixel_data, img_w, img_h)
-        self.current_y += img_h + 4
+            img_x = self.x + (self.width - img_w) // 2
+            if self._in_view(self.current_y, img_h):
+                # Full decode only when visible
+                raw = self._base64_decode(b64_data)
+                if len(raw) >= 4 + img_w * img_h * 3:
+                    draw_image(self.gr, img_x, self.current_y,
+                               raw[4:], img_w, img_h)
+            self.current_y += img_h + 4
+        except:
+            pass
+
+    def _base64_decode_n(self, data, n):
+        """Decode just the first n bytes from base64 data."""
+        table = MarkdownRenderer._B64
+        result = []
+        buf = 0
+        bits = 0
+        for c in data:
+            if len(result) >= n:
+                break
+            if c in table:
+                buf = (buf << 6) | table[c]
+                bits += 6
+                if bits >= 8:
+                    bits -= 8
+                    result.append((buf >> bits) & 0xFF)
+        return bytes(result)
 
     def _base64_decode(self, data):
         """Decode base64 string to bytes."""
@@ -1479,7 +1550,6 @@ class MarkdownDocument:
     """Loads and manages markdown document content."""
 
     def __init__(self):
-        self.content = ""
         self.lines = []
         self.renderer = None
         self._back_inited = False
@@ -1492,12 +1562,11 @@ class MarkdownDocument:
                 for line in f:
                     lines.append(line.rstrip('\r\n'))
             self.lines = lines
-            self.content = '\n'.join(lines)
             gc.collect()
             return True
         except:
-            self.content = "# Error\n\nCould not load file: " + filename
-            self.lines = self.content.split('\n')
+            self.lines = ["# Error", "",
+                          "Could not load file: " + filename]
             return False
 
     def _ensure_back_buffer(self, width, height):

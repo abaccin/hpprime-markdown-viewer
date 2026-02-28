@@ -13,7 +13,8 @@ from input_helpers import get_key, get_key_fast, get_touch, get_ticks, get_menu_
 from ui import (draw_menu, draw_notch, is_notch_tap,
     save_menu_area, restore_menu_area,
     show_search_input, show_context_menu, show_list_manager,
-    show_stats_dialog, show_goto_dialog, show_shortcuts_overlay)
+    show_stats_dialog, show_goto_dialog, show_shortcuts_overlay,
+    show_about_dialog)
 from graphics import draw_text, text_width
 from browser import file_picker
 import theme
@@ -21,7 +22,7 @@ import bookmarks
 import file_prefs
 
 VIEWER_MENU = ["Find", "Next", "Marks", "TOC", "More", "Theme"]
-BROWSER_MENU = ["Recent", "", "", "", "Help", "Theme"]
+BROWSER_MENU = ["Recent", "", "", "About", "Help", "Theme"]
 
 
 def save_last_file(filename, scroll_pos):
@@ -78,6 +79,9 @@ def _browser_menu_tap(slot, selected_file):
             if idx < len(recent):
                 return 'open:' + recent[idx]
         return True
+    elif slot == 3:  # About
+        show_about_dialog(MENU_Y)
+        return True
     elif slot == 4:  # Help
         return 'open:' + _find_help_file()
     elif slot == 5:  # Theme
@@ -90,7 +94,13 @@ def _find_help_file():
     """Find the best help file based on system language."""
     try:
         from hpprime import eval as heval
-        lang = heval('Language')
+        lang = None
+        try:
+            lang = heval('Language')
+        except:
+            return 'help.md'
+        if lang is None:
+            return 'help.md'
         codes = []
         if type(lang) is int:
             m = {2: 'es', 3: 'fr', 4: 'de', 5: 'it', 6: 'pt'}

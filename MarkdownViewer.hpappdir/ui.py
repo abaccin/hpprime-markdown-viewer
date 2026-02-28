@@ -519,6 +519,101 @@ def show_goto_dialog():
 
 
 # ---------------------------------------------------------------------------
+# About dialog
+# ---------------------------------------------------------------------------
+
+def show_about_dialog(menu_y=220, colors=None):
+    """Show an About screen with app name, version, build, platform, and memory.
+
+    Blocks until the user presses ESC / Enter or taps outside.
+    """
+    from constants import APP_VERSION, BUILD_NUMBER
+    import gc
+    c = _c(colors)
+    dw = 260
+    dh = 175
+    dx = (320 - dw) // 2
+    dy = (menu_y - dh) // 2
+    if dy < 5:
+        dy = 5
+
+    # Border + background
+    draw_rectangle(GR_AFF, dx - 1, dy - 1, dx + dw + 1, dy + dh + 1,
+                   c['ctx_border'], 255, c['ctx_border'], 255)
+    draw_rectangle(GR_AFF, dx, dy, dx + dw, dy + dh,
+                   c['ctx_bg'], 255, c['ctx_bg'], 255)
+
+    # Title
+    title = "MarkdownViewer"
+    tw = text_width(title, FONT_14)
+    draw_text(GR_AFF, dx + (dw - tw) // 2, dy + 8, title, FONT_14,
+              c.get('header', c['ctx_text']))
+
+    # Author
+    author = "by Andrea Baccin"
+    aw = text_width(author, FONT_10)
+    draw_text(GR_AFF, dx + (dw - aw) // 2, dy + 24, author, FONT_10,
+              c['ctx_border'])
+
+    # Separator
+    draw_rectangle(GR_AFF, dx + 10, dy + 38, dx + dw - 10, dy + 39,
+                   c['ctx_border'], 255, c['ctx_border'], 255)
+
+    # Info rows
+    col1 = dx + 15
+    col2 = dx + 110
+    row_y = dy + 46
+    rh = 18
+
+    draw_text(GR_AFF, col1, row_y, "Version:", FONT_10, c['ctx_text'])
+    draw_text(GR_AFF, col2, row_y, APP_VERSION, FONT_10, c['ctx_text'])
+    row_y += rh
+
+    draw_text(GR_AFF, col1, row_y, "Build:", FONT_10, c['ctx_text'])
+    draw_text(GR_AFF, col2, row_y, str(BUILD_NUMBER), FONT_10, c['ctx_text'])
+    row_y += rh
+
+    try:
+        import sys
+        plat = sys.platform
+    except:
+        plat = "unknown"
+    draw_text(GR_AFF, col1, row_y, "Platform:", FONT_10, c['ctx_text'])
+    draw_text(GR_AFF, col2, row_y, str(plat), FONT_10, c['ctx_text'])
+    row_y += rh
+
+    mem_kb = gc.mem_free() // 1024
+    mem_label = str(mem_kb) + " KB free"
+    draw_text(GR_AFF, col1, row_y, "Memory:", FONT_10, c['ctx_text'])
+    draw_text(GR_AFF, col2, row_y, mem_label, FONT_10, c['ctx_text'])
+    row_y += rh + 4
+
+    # GitHub URL
+    gh_url = "github.com/abaccin/hpprime-markdown-viewer"
+    gw = text_width(gh_url, FONT_10)
+    draw_text(GR_AFF, dx + (dw - gw) // 2, row_y, gh_url, FONT_10,
+              c.get('link', c['ctx_border']))
+
+    # Hint
+    hint = "ESC or Enter to close"
+    hw = text_width(hint, FONT_10)
+    draw_text(GR_AFF, dx + (dw - hw) // 2, dy + dh - 14, hint, FONT_10,
+              c['ctx_border'])
+
+    mouse_clear()
+    touch_down = False
+    while True:
+        k = get_key()
+        if k == KEY_ESC or k == KEY_ENTER:
+            return
+        tx, ty = get_touch()
+        if tx >= 0 and ty >= 0:
+            touch_down = True
+        elif touch_down:
+            return
+
+
+# ---------------------------------------------------------------------------
 # Keyboard shortcuts overlay
 # ---------------------------------------------------------------------------
 

@@ -37,9 +37,14 @@ NOTCH_Y = const(227)
 NOTCH_W = const(38)
 NOTCH_H = const(13)
 GR_MENU_SAVE = const(7)
+GR_IMG_CACHE = const(8)  # Persistent file-image cache (avoids repeated AFiles)
 
 # Touch/drag scrolling
 DRAG_THRESHOLD = const(3)
 
 # Long press (milliseconds)
 LONG_PRESS_MS = const(600)
+
+# App info
+APP_VERSION = '1.2.0'
+BUILD_NUMBER = '20260227.18'
